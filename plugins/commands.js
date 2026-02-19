@@ -345,13 +345,13 @@ Module(
       botImageLink = path.join(__dirname, "utils", "images", "default.png");
     }
 
-    const menu = `╭═══〘 \`${botName}\` 〙═══⊷❍
+    const menu = `╭═══〘 Zᴀʜɪᴅ Kɪɴɢ 〙═══⊷❍
 ┃${star}╭──────────────
 ┃${star}│
-┃${star}│ _*\`Owner\`*_ : ${botOwner}
+┃${star}│ _*\`Owner\`*_ : Zᴀʜɪᴅ Kɪɴɢ
 ┃${star}│ _*\`User\`*_ : ${message.senderName.replace(/[\r\n]+/gm, "")}
 ┃${star}│ _*\`Mode\`*_ : ${MODE}
-┃${star}│ _*\`Server\`*_ : ${os.platform() === "linux" ? "Zᴀʜɪᴅ Kɪɴɢ" : "Unknown OS"}
+┃${star}│ _*\`Server\`*_ : ${os.platform() === "Zᴀʜɪᴅ Kɪɴɢ" ? "Zᴀʜɪᴅ Kɪɴɢ" : "Unknown OS"}
 ┃${star}│ _*\`Available RAM\`*_ : ${used} of ${total}
 ┃${star}│ _*\`Total Users\`*_ : ${totalUsers}
 ┃${star}│ _*\`Version\`*_ : ${botVersion}
@@ -359,7 +359,7 @@ Module(
 ┃${star}│
 ┃${star}│  ▎▍▌▌▉▏▎▌▉▐▏▌▎
 ┃${star}│  ▎▍▌▌▉▏▎▌▉▐▏▌▎
-┃${star}│   ${botName}
+┃${star}│   Zᴀʜɪᴅ Kɪɴɢ
 ┃${star}│
 ┃${star}╰───────────────
 ╰═════════════════⊷
@@ -559,3 +559,4 @@ Module(
     await parseAlive(message, aliveMessage);
   }
 );
+

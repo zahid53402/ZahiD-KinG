@@ -1,4 +1,4 @@
-# Raganork-MD
+# Zᴀʜɪᴅ Kɪɴɢ-MD
 
 <p align="center">
   <a href="https://raganork.site">
@@ -155,3 +155,4 @@ GPL License - See LICENSE file for details.
 ---
 
 **Note:** Some files are obfuscated for security reasons and should not be modified.
+

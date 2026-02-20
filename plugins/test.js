@@ -1,75 +1,95 @@
-function TimeCalculator(a) {
-  let b = Math.floor(a / 31536e3),
-    c = Math.floor((a % 31536e3) / 2628e3),
-    d = Math.floor(((a % 31536e3) % 2628e3) / 86400),
-    e = Math.floor((a % 86400) / 3600),
-    f = Math.floor((a % 3600) / 60),
-    g = Math.floor(a % 60);
+const { Module } = require("../main");
+
+const BOT_BRAND = "ZAHID-KING-MD";
+
+// 🕒 Helper function to format time
+function TimeCalculator(seconds) {
+  let y = Math.floor(seconds / 31536000),
+    mo = Math.floor((seconds % 31536000) / 2628000),
+    d = Math.floor(((seconds % 31536000) % 2628000) / 86400),
+    h = Math.floor((seconds % 86400) / 3600),
+    m = Math.floor((seconds % 3600) / 60),
+    s = Math.floor(seconds % 60);
+
   return (
-    (b > 0 ? b + (1 === b ? " year, " : " years, ") : "") +
-    (c > 0 ? c + (1 === c ? " month, " : " months, ") : "") +
-    (d > 0 ? d + (1 === d ? " day, " : " days, ") : "") +
-    (e > 0 ? e + (1 === e ? " hour, " : " hours, ") : "") +
-    (f > 0 ? f + (1 === f ? " minute " : " minutes, ") : "") +
-    (g > 0 ? g + (1 === g ? " second" : " seconds ") : "")
+    (y > 0 ? y + (y === 1 ? " year, " : " years, ") : "") +
+    (mo > 0 ? mo + (mo === 1 ? " month, " : " months, ") : "") +
+    (d > 0 ? d + (d === 1 ? " day, " : " days, ") : "") +
+    (h > 0 ? h + (h === 1 ? " hour, " : " hours, ") : "") +
+    (m > 0 ? m + (m === 1 ? " minute, " : " minutes, ") : "") +
+    (s > 0 ? s + (s === 1 ? " second" : " seconds") : "")
   );
 }
-const { Module } = require("../main");
+
+// 👑 Command: Age Calculator
 Module(
   {
     pattern: "age ?(.*)",
-    desc: "Age calculator .age dob",
+    desc: "Calculates age from Date of Birth (DD-MM-YYYY)",
     use: "utility",
   },
-  async (m, t) => {
-    if (!t[1]) return await m.sendReply("_Give me your Date of Birth_");
-    if (
-      !/^(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[012])[\/\-]\d{4}$/.test(t[1])
-    )
-      return await m.sendReply("_Date must be in dd/mm/yy format_");
-    var DOB = t[1];
-    var actual = DOB.includes("-")
-      ? DOB.split("-")[1] + "-" + DOB.split("-")[0] + "-" + DOB.split("-")[2]
-      : DOB.split("/")[1] + "-" + DOB.split("/")[0] + "-" + DOB.split("/")[2];
-    var dob = new Date(actual).getTime();
-    var today = new Date().getTime();
-    var age = (today - dob) / 1000;
-    return await m.sendReply("```" + TimeCalculator(age) + "```");
+  async (m, match) => {
+    if (!match[1]) return await m.sendReply("_Please provide your Date of Birth (e.g., 25/12/1998)_");
+    
+    if (!/^(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[012])[\/\-]\d{4}$/.test(match[1])) {
+      return await m.sendReply("_Format must be DD/MM/YYYY!_");
+    }
+
+    let DOB = match[1];
+    let parts = DOB.includes("-") ? DOB.split("-") : DOB.split("/");
+    let actual = parts[1] + "-" + parts[0] + "-" + parts[2]; // Converts to MM-DD-YYYY for JS Date
+    
+    let dob = new Date(actual).getTime();
+    let today = new Date().getTime();
+    
+    if (dob > today) return await m.sendReply("_Date of Birth cannot be in the future!_");
+
+    let ageInSeconds = (today - dob) / 1000;
+    return await m.sendReply(`*───「 ${BOT_BRAND} AGE 」───*\n\n` + "```" + TimeCalculator(ageInSeconds) + "```");
   }
 );
+
+// 👑 Command: Date Countdown
 Module(
   {
     pattern: "cntd ?(.*)",
-    desc: "Counts Date",
+    desc: "Counts remaining time until a future date",
     use: "utility",
   },
-  async (m, t) => {
-    if (!t[1]) return await m.sendReply("_Give me a future date!_");
-    if (
-      !/^(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[012])[\/\-]\d{4}$/.test(t[1])
-    )
-      return await m.sendReply("_Date must be in dd/mm/yy format_");
-    var DOB = t[1];
-    var actual = DOB.includes("-")
-      ? DOB.split("-")[1] + "-" + DOB.split("-")[0] + "-" + DOB.split("-")[2]
-      : DOB.split("/")[1] + "-" + DOB.split("/")[0] + "-" + DOB.split("/")[2];
-    var dob = new Date(actual).getTime();
-    var today = new Date().getTime();
-    var age = (dob - today) / 1000;
-    return await m.sendReply("_" + TimeCalculator(age) + " remaining_");
+  async (m, match) => {
+    if (!match[1]) return await m.sendReply("_Provide a future date! (e.g., 01/01/2027)_");
+
+    if (!/^(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[012])[\/\-]\d{4}$/.test(match[1])) {
+      return await m.sendReply("_Format must be DD/MM/YYYY!_");
+    }
+
+    let targetDate = match[1];
+    let parts = targetDate.includes("-") ? targetDate.split("-") : targetDate.split("/");
+    let actual = parts[1] + "-" + parts[0] + "-" + parts[2];
+    
+    let targetTime = new Date(actual).getTime();
+    let now = new Date().getTime();
+    
+    if (targetTime < now) return await m.sendReply("_Date must be in the future!_");
+
+    let remainingSeconds = (targetTime - now) / 1000;
+    return await m.sendReply(`*───「 ${BOT_BRAND} COUNTDOWN 」───*\n\n` + `_Remaining:_ *${TimeCalculator(remainingSeconds)}*`);
   }
 );
+
+// 👑 Command: Speed Test (Ping)
 Module(
   {
     pattern: "ping",
     use: "utility",
-    desc: "Measures ping",
+    desc: "Measures bot response latency",
   },
-  async (message, match) => {
+  async (message) => {
     const start = process.hrtime();
-    let sent_msg = await message.sendReply("*❮ ᴛᴇsᴛɪɴɢ ᴘɪɴɢ ❯*");
+    let sent_msg = await message.sendReply(`*Testing ${BOT_BRAND} Latency...*`);
     const diff = process.hrtime(start);
     const ms = (diff[0] * 1e3 + diff[1] / 1e6).toFixed(2);
-    await message.edit("*ʟᴀᴛᴇɴᴄʏ: " + ms + " _ᴍs_*", message.jid, sent_msg.key);
+    
+    await message.edit(`*🚀 Latency:* \`${ms} ms\``, message.jid, sent_msg.key);
   }
 );

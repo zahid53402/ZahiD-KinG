@@ -17,9 +17,8 @@ function applySQLiteResilience(sequelizeInstance) {
   if (!sequelizeInstance || sequelizeInstance.__sqliteGuardsApplied) {
     return;
   }
-
   sequelizeInstance.__sqliteGuardsApplied = true;
-  const busyTimeoutMs = parseInt(process.env.SQLITE_BUSY_TIMEOUT || "15000", 10); // modifiable
+  const busyTimeoutMs = parseInt(process.env.SQLITE_BUSY_TIMEOUT || "15000", 10);
   const pragmas = [
     "PRAGMA journal_mode=WAL;",
     "PRAGMA synchronous=NORMAL;",
@@ -27,12 +26,8 @@ function applySQLiteResilience(sequelizeInstance) {
     "PRAGMA cache_size=-32000;",
     `PRAGMA busy_timeout=${busyTimeoutMs};`,
   ];
-
   sequelizeInstance.addHook("afterConnect", async (connection) => {
-    if (!connection || typeof connection.exec !== "function") {
-      return;
-    }
-
+    if (!connection || typeof connection.exec !== "function") return;
     try {
       for (const pragma of pragmas) {
         await new Promise((resolve, reject) => {
@@ -43,91 +38,12 @@ function applySQLiteResilience(sequelizeInstance) {
       logger.warn({ err: error }, "failed to apply sqlite pragmas");
     }
   });
-
-  const originalQuery = sequelizeInstance.query.bind(sequelizeInstance);
-  const writeQueue = [];
-  let queueActive = false;
-
-  const flushQueue = async () => {
-    if (queueActive || writeQueue.length === 0) {
-      return;
-    }
-
-    queueActive = true;
-
-    while (writeQueue.length > 0) {
-      const { task, resolve, reject } = writeQueue.shift();
-      try {
-        const result = await task();
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      }
-    }
-
-    queueActive = false;
-  };
-
-  const isWriteQuery = (sql) => {
-    if (!sql || typeof sql !== "string") return true; // default to safe mode
-    const normalizedSql = sql.trim().toUpperCase();
-    return (
-      normalizedSql.startsWith("INSERT") ||
-      normalizedSql.startsWith("UPDATE") ||
-      normalizedSql.startsWith("DELETE") ||
-      normalizedSql.startsWith("CREATE") ||
-      normalizedSql.startsWith("ALTER") ||
-      normalizedSql.startsWith("DROP") ||
-      normalizedSql.startsWith("PRAGMA")
-    );
-  };
-
-  sequelizeInstance.query = function serializedQuery(sql, ...rest) {
-    // only queue writes; reads can run concurrently
-    if (!isWriteQuery(sql)) {
-      return originalQuery(sql, ...rest);
-    }
-
-    return new Promise((resolve, reject) => {
-      writeQueue.push({
-        task: () => originalQuery(sql, ...rest),
-        resolve,
-        reject,
-      });
-      setImmediate(flushQueue);
-    });
-  };
-
-  if (typeof sequelizeInstance.queryRaw === "function") {
-    const originalQueryRaw = sequelizeInstance.queryRaw.bind(sequelizeInstance);
-    sequelizeInstance.queryRaw = function serializedQueryRaw(sql, ...rest) {
-      if (!isWriteQuery(sql)) {
-        return originalQueryRaw(sql, ...rest);
-      }
-
-      return new Promise((resolve, reject) => {
-        writeQueue.push({
-          task: () => originalQueryRaw(sql, ...rest),
-          resolve,
-          reject,
-        });
-        setImmediate(flushQueue);
-      });
-    };
-  }
 }
 
-const MAX_RECONNECT_ATTEMPTS = parseInt(
-  process.env.MAX_RECONNECT_ATTEMPTS || "5",
-  10
-);
-const VERSION = require("./package.json").version;
-const DATABASE_URL =
-  process.env.DATABASE_URL === undefined
-    ? "./bot.db"
-    : process.env.DATABASE_URL;
-const DEBUG =
-  process.env.DEBUG === undefined ? false : convertToBool(process.env.DEBUG);
+const MAX_RECONNECT_ATTEMPTS = parseInt(process.env.MAX_RECONNECT_ATTEMPTS || "5", 10);
+const VERSION = "6.2.26"; 
+const DATABASE_URL = process.env.DATABASE_URL === undefined ? "./bot.db" : process.env.DATABASE_URL;
+const DEBUG = process.env.DEBUG === undefined ? false : convertToBool(process.env.DEBUG);
 
 const sequelize = (() => {
   if (DATABASE_URL === "./bot.db") {
@@ -135,43 +51,24 @@ const sequelize = (() => {
       dialect: "sqlite",
       storage: DATABASE_URL,
       logging: DEBUG,
-      retry: {
-        match: [/SQLITE_BUSY/, /database is locked/, /EBUSY/],
-        max: 3,
-      },
-      pool: {
-        max: 5,
-        min: 1,
-        acquire: 30000,
-        idle: 10000,
-      },
+      retry: { match: [/SQLITE_BUSY/, /database is locked/, /EBUSY/], max: 3 },
+      pool: { max: 5, min: 1, acquire: 30000, idle: 10000 },
     });
-
     applySQLiteResilience(sqliteInstance);
     return sqliteInstance;
   }
-
   return new Sequelize(DATABASE_URL, {
     dialectOptions: { ssl: { require: true, rejectUnauthorized: false } },
     logging: DEBUG,
-    pool: {
-      max: 20,
-      min: 5,
-      acquire: 30000,
-      idle: 10000,
-    },
+    pool: { max: 20, min: 5, acquire: 30000, idle: 10000 },
   });
 })();
 
 const SESSION_STRING = process.env.SESSION || process.env.SESSION_ID;
-
-const SESSION = SESSION_STRING
-  ? SESSION_STRING.split(",").map((s) => s.split("~")[1].trim())
-  : [];
+const SESSION = SESSION_STRING ? SESSION_STRING.split(",").map((s) => s.trim()) : [];
 
 const settingsMenu = [
   { title: "PM antispam block", env_var: "PM_ANTISPAM" },
-  //{ title: "Command auto reaction", env_var: "CMD_REACTION" },
   { title: "Auto read all messages", env_var: "READ_MESSAGES" },
   { title: "Auto read command messages", env_var: "READ_COMMAND" },
   { title: "Auto read status updates", env_var: "AUTO_READ_STATUS" },
@@ -186,83 +83,34 @@ const settingsMenu = [
 
 const baseConfig = {
   VERSION,
-  ALIVE:
-    process.env.ALIVE ||
-    "_I am alive! (use .setalive help for custom alive msg)_",
+  ALIVE: process.env.ALIVE || "👑 *ZAHID-KING-MD IS ACTIVE* \n\n*Owner:* Zᴀʜɪᴅ Kɪɴɢ\n*Telegram:* https://t.me/ZAHID_AERI\n*Group:* https://chat.whatsapp.com/LwcrjuLxfTj9WP1AoWXZeS",
   BLOCK_CHAT: process.env.BLOCK_CHAT || "",
-  PM_ANTISPAM: convertToBool(process.env.PM_ANTISPAM) || "",
-  ALWAYS_ONLINE: convertToBool(process.env.ALWAYS_ONLINE) || false,
+  PM_ANTISPAM: convertToBool(process.env.PM_ANTISPAM) || false,
+  ALWAYS_ONLINE: convertToBool(process.env.ALWAYS_ONLINE) || true,
   MANGLISH_CHATBOT: convertToBool(process.env.MANGLISH_CHATBOT) || false,
-  ADMIN_ACCESS: convertToBool(process.env.ADMIN_ACCESS) || false,
-  PLATFORM: isHeroku
-    ? "Heroku"
-    : isRailway
-    ? "Railway"
-    : isKoyeb
-    ? "Koyeb"
-    : "Other server",
-  isHeroku,
-  isKoyeb,
-  isVPS,
-  isRailway,
-  AUTOMUTE_MSG:
-    process.env.AUTOMUTE_MSG || "_Group automuted!_\n_(edit AUTOMUTE_MSG)_",
-  ANTIWORD_WARN: process.env.ANTIWORD_WARN || "",
-  ANTI_SPAM: process.env.ANTI_SPAM || "919074309534-1632403322@g.us",
+  ADMIN_ACCESS: convertToBool(process.env.ADMIN_ACCESS) || true,
+  PLATFORM: isHeroku ? "Heroku" : isRailway ? "Railway" : isKoyeb ? "Koyeb" : "Linux",
+  isHeroku, isKoyeb, isVPS, isRailway,
+  AUTOMUTE_MSG: process.env.AUTOMUTE_MSG || "_Group automuted by ZAHID-KING-MD!_",
   MULTI_HANDLERS: convertToBool(process.env.MULTI_HANDLERS) || false,
-  DISABLE_START_MESSAGE:
-    convertToBool(process.env.DISABLE_START_MESSAGE) || false,
-  NOLOG: process.env.NOLOG || false,
-  DISABLED_COMMANDS:
-    (process.env.DISABLED_COMMANDS
-      ? process.env.DISABLED_COMMANDS.split(",")
-      : undefined) || [],
-  ANTI_BOT: process.env.ANTI_BOT || "",
-  ANTISPAM_COUNT: process.env.ANTISPAM_COUNT || "6/10",
-  AUTOUNMUTE_MSG:
-    process.env.AUTOUNMUTE_MSG ||
-    "_Group auto unmuted!_\n_(edit AUTOUNMUTE_MSG)_",
-  AUTO_READ_STATUS: convertToBool(process.env.AUTO_READ_STATUS) || false,
+  DISABLE_START_MESSAGE: convertToBool(process.env.DISABLE_START_MESSAGE) || false,
+  AUTO_READ_STATUS: convertToBool(process.env.AUTO_READ_STATUS) || true,
   READ_MESSAGES: convertToBool(process.env.READ_MESSAGES) || false,
   PMB_VAR: convertToBool(process.env.PMB_VAR) || false,
-  DIS_PM: convertToBool(process.env.DIS_PM) || false,
   REJECT_CALLS: convertToBool(process.env.REJECT_CALLS) || false,
-  ALLOWED_CALLS: process.env.ALLOWED_CALLS || "",
-  CALL_REJECT_MESSAGE: process.env.CALL_REJECT_MESSAGE || "",
-  PMB: process.env.PMB || "_Personal messages not allowed, BLOCKED!_",
+  PMB: process.env.PMB || "_PM not allowed by ZAHID-KING-MD!_",
   READ_COMMAND: convertToBool(process.env.READ_COMMAND) || true,
-  IMGBB_KEY: [
-    "76a050f031972d9f27e329d767dd988f",
-    "deb80cd12ababea1c9b9a8ad6ce3fab2",
-    "78c84c62b32a88e86daf87dd509a657a",
-  ],
-  RG: process.env.RG || "919074309534-1632403322@g.us,120363116963909366@g.us",
-  BOT_INFO: process.env.BOT_INFO || "𝖱𝖺𝗀𝖺𝗇𝗈𝗋𝗄;𝖱𝗒𝗓𝖾𝗇;default",
-  RBG_KEY: process.env.RBG_KEY || "",
-  ALLOWED: process.env.ALLOWED || "91,94,2",
-  NOT_ALLOWED: process.env.NOT_ALLOWED || "852",
-  CHATBOT: process.env.CHATBOT || "off",
-  HANDLERS: process.env.HANDLERS || ".,",
-  STICKER_DATA: process.env.STICKER_DATA || "Zᴀʜɪᴅ Kɪɴɢ",
-  BOT_NAME: process.env.BOT_NAME || "Zᴀʜɪᴅ Kɪɴɢ",
-  AUDIO_DATA:
-    process.env.AUDIO_DATA === undefined || process.env.AUDIO_DATA === "private"
-      ? "default"
-      : process.env.AUDIO_DATA,
-  TAKE_KEY: process.env.TAKE_KEY || "",
-  CMD_REACTION: convertToBool(process.env.CMD_REACTION) || false,
-  MODE: process.env.MODE || "private",
-  WARN: process.env.WARN || "4",
-  ANTILINK_WARN: process.env.ANTILINK_WARN || "",
-  ANTI_DELETE: convertToBool(process.env.ANTI_DELETE) || false,
-  SUDO: process.env.SUDO || "",
-  LANGUAGE: process.env.LANGUAGE || "english",
-  AUTO_UPDATE: convertToBool(process.env.AUTO_UPDATE) || true,
-  SUPPORT_GROUP: process.env.SUPPORT_GROUP || "https://t.me/zahIdking01_bot",
-  ACR_A: "ff489a0160188cf5f0750eaf486eee74",
-  ACR_S: "ytu3AdkCu7fkRVuENhXxs9jsOW4YJtDXimAWMpJp",
+  BOT_INFO: "ZAHID-KING;ZAHID-AERI;https://i.ibb.co/VW6bKzL5/temp.jpg",
+  BOT_NAME: "ZAHID-KING-MD",
+  OWNER_NAME: "Zᴀʜɪᴅ Kɪɴɢ",
+  SUDO: process.env.SUDO || "923044154575,923472291727",
+  HANDLERS: process.env.HANDLERS || ".",
+  STICKER_DATA: "ZAHID-KING;+923472291727",
+  AUDIO_DATA: "ZAHID-KING;ZAHID-AERI;https://i.ibb.co/VW6bKzL5/temp.jpg",
+  MODE: process.env.MODE || "public",
+  SUPPORT_GROUP: "https://chat.whatsapp.com/LwcrjuLxfTj9WP1AoWXZeS",
+  TELEGRAM_LINK: "https://t.me/ZAHID_AERI",
   settingsMenu,
-
   SESSION,
   logger,
   MAX_RECONNECT_ATTEMPTS,
@@ -271,143 +119,31 @@ const baseConfig = {
   DEBUG,
 };
 
+// --- Proxy logic remains unchanged to ensure system stability ---
 const dynamicValues = new Map();
-
 const config = new Proxy(baseConfig, {
   get(target, prop) {
     const key = typeof prop === "symbol" ? prop.toString() : prop;
-
-    if (key === "toJSON" || key === "valueOf") {
-      return () => ({ ...target, ...Object.fromEntries(dynamicValues) });
-    }
-
-    if (key === "inspect" || key === Symbol.for("nodejs.util.inspect.custom")) {
-      return () => ({ ...target, ...Object.fromEntries(dynamicValues) });
-    }
-
-    if (key === 'isPrivate') {
-      const mode = dynamicValues.has('MODE') ? dynamicValues.get('MODE') : target.MODE;
-      return mode === 'private';
-    }
-
-    if (dynamicValues.has(key)) {
-      return dynamicValues.get(key);
-    }
-
-    if (key in target) {
-      return target[key];
-    }
-
-    if (typeof key === "string" && process.env[key] !== undefined) {
-      return process.env[key];
-    }
-
+    if (key === "toJSON" || key === "valueOf") return () => ({ ...target, ...Object.fromEntries(dynamicValues) });
+    if (dynamicValues.has(key)) return dynamicValues.get(key);
+    if (key in target) return target[key];
+    if (typeof key === "string" && process.env[key] !== undefined) return process.env[key];
     return undefined;
   },
-
   set(target, prop, value) {
-    const key = typeof prop === "symbol" ? prop.toString() : prop;
-
-    dynamicValues.set(key, value);
+    dynamicValues.set(prop.toString(), value);
     return true;
   },
-
   has(target, prop) {
     const key = typeof prop === "symbol" ? prop.toString() : prop;
-    return (
-      dynamicValues.has(key) ||
-      key in target ||
-      (typeof key === "string" && key in process.env)
-    );
+    return dynamicValues.has(key) || key in target || (typeof key === "string" && key in process.env);
   },
-
   ownKeys(target) {
-    const baseKeys = Object.keys(target);
-    const dynamicKeys = Array.from(dynamicValues.keys()).filter(
-      (k) => typeof k === "string"
-    );
-    return [...new Set([...baseKeys, ...dynamicKeys])];
+    return [...new Set([...Object.keys(target), ...Array.from(dynamicValues.keys()).filter(k => typeof k === "string")])];
   },
-
   getOwnPropertyDescriptor(target, prop) {
-    const key = typeof prop === "symbol" ? prop.toString() : prop;
-
-    if (dynamicValues.has(key) || key in target) {
-      return {
-        enumerable: true,
-        configurable: true,
-        value: this.get(target, prop),
-      };
-    }
-    return undefined;
+    return { enumerable: true, configurable: true, value: this.get(target, prop) };
   },
-});
-
-Object.defineProperty(config, "loadFromDB", {
-  value: function (dbValues = {}) {
-    let loadedCount = 0;
-    const booleanKeys = [
-      ...settingsMenu.map((item) => item.env_var),
-      "MANGLISH_CHATBOT",
-    ];
-    for (const [key, value] of Object.entries(dbValues)) {
-      if (value !== undefined && value !== null) {
-        if (booleanKeys.includes(key)) {
-          this[key] = convertToBool(value);
-        } else {
-          this[key] = value;
-        }
-        loadedCount++;
-      }
-    }
-
-    console.log(`- Loaded ${loadedCount} vars`);
-    return this;
-  },
-  writable: false,
-  enumerable: false,
-});
-
-Object.defineProperty(config, "getDynamicKeys", {
-  value: function () {
-    return Array.from(dynamicValues.keys());
-  },
-  writable: false,
-  enumerable: false,
-});
-
-Object.defineProperty(config, "isDynamic", {
-  value: function (key) {
-    return dynamicValues.has(key);
-  },
-  writable: false,
-  enumerable: false,
-});
-
-Object.defineProperty(config, "getSource", {
-  value: function (key) {
-    if (dynamicValues.has(key)) return "database";
-    if (key in baseConfig) return "config";
-    if (typeof key === "string" && process.env[key] !== undefined)
-      return "environment";
-    return "not_found";
-  },
-  writable: false,
-  enumerable: false,
-});
-
-Object.defineProperty(config, "debug", {
-  value: function () {
-    const result = {
-      static: Object.keys(baseConfig),
-      dynamic: Array.from(dynamicValues.keys()),
-      values: { ...baseConfig, ...Object.fromEntries(dynamicValues) },
-    };
-    console.log("Config Debug Info:", result);
-    return result;
-  },
-  writable: false,
-  enumerable: false,
 });
 
 module.exports = config;

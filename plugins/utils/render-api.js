@@ -1,68 +1,59 @@
+/**
+ * ZAHID-KING-MD - Render Deployment Manager
+ * Automatically triggers new builds on Render.com
+ */
+
 const axios = require("axios");
 
 async function deployLatestCommit(serviceId, apiKey) {
-  if (!serviceId) {
-    console.error("Error: RENDER_SERVICE_ID is not set.");
+  // 1. Check for required Credentials
+  if (!serviceId || !apiKey) {
+    console.error("❌ [Render Engine]: Missing Service ID or API Key.");
     return;
   }
 
-  if (!apiKey) {
-    console.error("Error: RENDER_API_KEY is not set.");
-    return;
-  }
-
-  const autoScalingUrl = `https://api.render.com/v1/services/${serviceId}/autoscaling`;
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
 
   try {
-    const disableRes = await axios.delete(autoScalingUrl, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
-    console.log("Autoscaling disabled:", disableRes.data || "No content");
-  } catch (err) {
-    console.error(
-      "Error disabling autoscaling:",
-      err.response?.data || err.message
-    );
-    return;
-  }
+    console.log("🔄 [Render Engine]: Preparing deployment for ZAHID-KING-MD...");
 
-  const deployUrl = `https://api.render.com/v1/services/${serviceId}/deploys`;
+    // 2. Disable Autoscaling (To prevent multiple instances during deploy)
+    const autoScalingUrl = `https://api.render.com/v1/services/${serviceId}/autoscaling`;
+    try {
+      await axios.delete(autoScalingUrl, { headers });
+      console.log("✅ [Render Engine]: Autoscaling managed.");
+    } catch (err) {
+      // Logic continue even if autoscaling was already disabled
+    }
 
-  try {
+    // 3. Trigger New Deployment with Clear Cache
+    const deployUrl = `https://api.render.com/v1/services/${serviceId}/deploys`;
     const response = await axios.post(
       deployUrl,
-      {
-        clearCache: "clear",
-      },
-      {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-      }
+      { clearCache: "clear" },
+      { headers: { ...headers, "Content-Type": "application/json" } }
     );
 
-    const deployInfo = response.data;
+    const { id, status, trigger, commit } = response.data;
 
-    console.log("\nDeployment initiated successfully!");
-    console.log(`Deploy ID: ${deployInfo.id}`);
-    console.log(`Status: ${deployInfo.status}`);
-    console.log(`Triggered by: ${deployInfo.trigger}`);
-    if (deployInfo.commit) {
-      console.log(`Commit SHA: ${deployInfo.commit.id}`);
-      console.log(`Commit Message: ${deployInfo.commit.message}`);
+    console.log("\n🚀 [ZAHID-KING-MD]: Deployment Started!");
+    console.log(`🔹 ID: ${id}`);
+    console.log(`🔹 Status: ${status}`);
+    console.log(`🔹 Trigger: ${trigger}`);
+    
+    if (commit) {
+      console.log(`📝 Commit: ${commit.message}`);
     }
-    console.log(
-      `Render Dashboard Link: https://dashboard.render.com/web/${serviceId}/deploys/${deployInfo.id}`
-    );
+    
+    console.log(`🔗 Dashboard: https://dashboard.render.com/web/${serviceId}/deploys/${id}`);
+
   } catch (err) {
     console.error(
-      "Error during deployment:",
-      err.response?.data || err.message
+      "❌ [Render Engine]: Deploy Failed ->",
+      err.response?.data?.message || err.message
     );
   }
 }

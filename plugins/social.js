@@ -11,6 +11,8 @@ const botConfig = require("../config");
 const axios = require("axios");
 const isFromMe = botConfig.MODE === "public" ? false : true;
 
+const BOT_BRAND = "ZAHID-KING-MD";
+
 async function checkRedirect(url) {
   let split_url = url.split("/");
   if (split_url.includes("share")) {
@@ -19,339 +21,160 @@ async function checkRedirect(url) {
   }
   return url;
 }
+
+// 👑 Instagram Downloader
 Module(
   {
     pattern: "insta ?(.*)",
     fromMe: isFromMe,
-    desc: "Instagram post/reel/tv/highlights downloader - supports multiple links",
-    usage: "insta link(s) or reply to link(s)",
+    desc: "Download Instagram Reels/Posts/TV",
     use: "download",
   },
   async (message, match) => {
     let mediaLinks = match[1] || message.reply_message?.text;
-    if (mediaLinks.startsWith("ll")) return;
-    if (!mediaLinks)
-      return await message.sendReply("_*Need Instagram link(s)*_");
+    if (!mediaLinks) return await message.sendReply("_Provide Instagram link(s)_");
 
-    // extract all urls from the text
     const allUrls = mediaLinks.match(/\bhttps?:\/\/\S+/gi) || [];
-    if (!allUrls.length)
-      return await message.sendReply("_*Need Instagram link(s)*_");
+    if (!allUrls.length) return await message.sendReply("_Invalid Instagram link!_");
 
-    // filter and validate instagram urls
-    const instagramUrls = [];
-    const instagramRegex =
-      /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|s|reel|tv)\/[\w-]+/i;
-
-    for (let url of allUrls) {
-      if (url.includes("gist") || url.includes("youtu") || url.startsWith("ll"))
-        continue;
-
-      url = await checkRedirect(url);
-
-      if (url.includes("stories")) continue;
-
-      if (!url.includes("instagram.com")) continue;
-
-      if (instagramRegex.test(url)) {
-        const mediaId = url.match(/\/([\w-]+)\/?$/)?.[1];
-        if (mediaId && mediaId.length > 20) continue; // skip private accounts
-
-        instagramUrls.push(url);
-      }
-    }
-
-    if (!instagramUrls.length)
-      return await message.sendReply("_Need valid Instagram link(s)_");
+    await message.send(`_Fetching media for ${BOT_BRAND}..._`);
 
     try {
       const allMediaUrls = [];
-      const quotedMessage = message.reply_message
-        ? message.quoted
-        : message.data;
-
-      // download from all urls
-      for (const url of instagramUrls) {
-        try {
+      for (let url of allUrls) {
+        url = await checkRedirect(url);
+        if (url.includes("instagram.com")) {
           const downloadResult = await downloadGram(url);
-          if (downloadResult && downloadResult.length) {
-            allMediaUrls.push(...downloadResult);
-          }
-        } catch (err) {
-          console.error("Error downloading from:", url, err?.message);
+          if (downloadResult) allMediaUrls.push(...downloadResult);
         }
       }
 
-      if (!allMediaUrls.length)
-        return await message.sendReply(
-          "_Something went wrong, Please try again!_"
-        );
+      if (!allMediaUrls.length) return await message.sendReply("_Media not found or account is private!_");
 
-      // send as single media or album
       if (allMediaUrls.length === 1) {
         return await message.sendMessage(
           { url: allMediaUrls[0] },
-          /\.(jpg|jpeg|png|webp|heic)(\?|$)/i.test(allMediaUrls[0])
-            ? "image"
-            : "video",
-          {
-            quoted: quotedMessage,
-          }
+          /\.(jpg|jpeg|png|webp)(\?|$)/i.test(allMediaUrls[0]) ? "image" : "video",
+          { quoted: message.data }
         );
       }
 
-      // send as album
-      const albumObject = allMediaUrls.map((mediaUrl) => {
-        return /\.(jpg|jpeg|png|webp|heic)(\?|$)/i.test(mediaUrl)
-          ? { image: mediaUrl }
-          : { video: mediaUrl };
-      });
-      albumObject[0].caption = `_Download complete! (${allMediaUrls.length} items)_`;
-      return await message.client.albumMessage(
-        message.jid,
-        albumObject,
-        message.data
-      );
+      const album = allMediaUrls.map((url) => (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(url) ? { image: url } : { video: url }));
+      album[0].caption = `*Downloaded by ${BOT_BRAND}*`;
+      return await message.client.albumMessage(message.jid, album, message.data);
     } catch (err) {
-      console.error("Insta command error:", err?.message || err);
-      return await message.sendReply(
-        "_Something went wrong, Please try again!_"
-      );
+      return await message.sendReply("_Error downloading media. Try again later._");
     }
   }
 );
 
+// 👑 Facebook Downloader
 Module(
   {
     pattern: "fb ?(.*)",
     fromMe: isFromMe,
-    desc: "Facebook video downloader",
-    usage: "fb link or reply to a link",
+    desc: "Download Facebook videos",
     use: "download",
   },
   async (message, match) => {
-    let videoLink = !message.reply_message?.message
-      ? match[1]
-      : message.reply_message.message;
+    let videoLink = match[1] || message.reply_message?.text;
+    if (!videoLink) return await message.sendReply("_Provide Facebook video link!_");
+    
+    videoLink = videoLink.match(/\bhttps?:\/\/\S+/gi)?.[0];
+    if (!videoLink) return await message.sendReply("_Invalid link!_");
 
-    if (/\bhttps?:\/\/\S+/gi.test(videoLink)) {
-      videoLink = videoLink.match(/\bhttps?:\/\/\S+/gi)[0];
-    }
-    if (!videoLink) return await message.sendReply("_Need facebook link_");
     try {
+      await message.send("_Downloading Facebook video..._");
       const { url } = await fb(videoLink);
-      return await message.sendReply({ url }, "video");
+      return await message.sendMessage({ url }, "video", { caption: `*Downloaded by ${BOT_BRAND}*` });
     } catch (e) {
-      console.error("Facebook download error:", e.message);
-      return await message.sendReply(
-        "_Something went wrong, Please try again!_"
-      );
+      return await message.sendReply("_Failed to download. Make sure the video is public._");
     }
   }
 );
 
+// 👑 Instagram Stalk (Profile Info)
 Module(
   {
     pattern: "ig ?(.*)",
     fromMe: isFromMe,
-    desc: "Gets account info from instagram",
-    usage: "ig username",
-    excludeFromCommands: true,
+    desc: "Get Instagram account details",
     use: "search",
   },
   async (message, match) => {
-    if (!match[1]) return await message.sendReply("_Need Instagram username!_");
-
-    if (match[1].startsWith("https") && match[1].includes("instagram")) {
-      const usernameRegex = /instagram\.com\/([^/?]+)/i;
-      const usernameMatch = match[1].match(usernameRegex);
-      match[1] = usernameMatch && usernameMatch[1];
-    }
+    if (!match[1]) return await message.sendReply("_Provide a username!_");
+    let user = match[1].replace(/@/g, "");
 
     try {
-      var accountInfo = await igStalk(encodeURIComponent(match[1]));
+      const account = await igStalk(encodeURIComponent(user));
+      let caption = `*───「 ${BOT_BRAND} IG STALK 」───*\n\n`;
+      caption += `*Name:* ${account.full_name}\n`;
+      caption += `*Followers:* ${account.followers}\n`;
+      caption += `*Following:* ${account.following}\n`;
+      caption += `*Posts:* ${account.posts}\n`;
+      caption += `*Bio:* ${account.bio}\n`;
+      caption += `*Private:* ${account.is_private ? "Yes" : "No"}`;
+
+      return await message.sendMessage({ url: account.profile_pic }, "image", { caption });
     } catch {
-      return await message.sendReply("_Server busy!_");
-    }
-
-    await message.sendMessage({ url: accountInfo.profile_pic }, "image", {
-      caption: `_*Name:*_ ${accountInfo.full_name}\n_*Followers:*_ ${
-        accountInfo.followers
-      }\n_*Following:*_ ${accountInfo.following}\n_*Bio:*_ ${
-        accountInfo.bio
-      }\n_*Private account:*_ ${
-        accountInfo.is_private ? "Yes" : "No"
-      } \n_*Posts:*_ ${accountInfo.posts}`,
-      quoted: message.data,
-    });
-  }
-);
-
-Module(
-  {
-    pattern: "story ?(.*)",
-    fromMe: isFromMe,
-    desc: "Instagram stories downloader",
-    usage: ".story username or link",
-    use: "download",
-  },
-  async (message, match) => {
-    let userIdentifier =
-      match[1] !== "" ? match[1] : message.reply_message.text;
-
-    if (
-      userIdentifier &&
-      (userIdentifier.includes("/reel/") ||
-        userIdentifier.includes("/tv/") ||
-        userIdentifier.includes("/p/"))
-    )
-      return;
-    if (!userIdentifier)
-      return await message.sendReply("_Need an Instagram username or link!_");
-
-    userIdentifier = !/\bhttps?:\/\/\S+/gi.test(userIdentifier)
-      ? `https://instagram.com/stories/${userIdentifier}/`
-      : userIdentifier.match(/\bhttps?:\/\/\S+/gi)[0];
-
-    try {
-      var storyData = await downloadGram(userIdentifier);
-    } catch {
-      return await message.sendReply("*_Sorry, server error_*");
-    }
-    if (!storyData || !storyData.length)
-      return await message.sendReply("*_Not found!_*");
-    if (storyData.length === 1)
-      return await message.sendReply(
-        { url: storyData[0] },
-        /\.(jpg|jpeg|png|webp)(\?|$)/i.test(storyData[0]) ? "image" : "video"
-      );
-    userIdentifier = userIdentifier
-      .replace("https://instagram.com/stories/", "")
-      .split("/")[0];
-    let albumObject = storyData.map((storyMediaUrl) => {
-      return /\.(jpg|jpeg|png|webp)(\?|$)/i.test(storyMediaUrl)
-        ? { image: storyMediaUrl }
-        : { video: storyMediaUrl };
-    });
-    albumObject[0].caption = `_Stories from ${userIdentifier}_`;
-    return await message.client.albumMessage(
-      message.jid,
-      albumObject,
-      message.data
-    );
-  }
-);
-
-Module(
-  {
-    pattern: "pinterest ?(.*)",
-    fromMe: isFromMe,
-    desc: "Pinterest downloader",
-    usage: ".pinterest query or link",
-    use: "download",
-  },
-  async (message, match) => {
-    let userQuery = match[1] !== "" ? match[1] : message.reply_message.text;
-    if (userQuery === "g") return;
-    if (!userQuery)
-      return await message.sendReply("_Need search term or pin video link_");
-
-    if (/\bhttps?:\/\/\S+/gi.test(userQuery)) {
-      userQuery = userQuery.match(/\bhttps?:\/\/\S+/gi)[0];
-      let pinterestResult;
-      try {
-        pinterestResult = await pinterestDl(userQuery);
-      } catch (err) {
-        console.error("pinterestDl error:", err?.message || err);
-        return await message.sendReply("_Server error_");
-      }
-
-      if (
-        !pinterestResult ||
-        !pinterestResult.status ||
-        !pinterestResult.result
-      )
-        return await message.sendReply(
-          "_No downloadable media found for this link_"
-        );
-
-      const url = pinterestResult.result;
-      const quotedMessage = message.reply_message
-        ? message.quoted
-        : message.data;
-      await message.sendMessage({ url }, "video", { quoted: quotedMessage });
-    } else {
-      let desiredCount = parseInt(userQuery.split(",")[1]) || 5;
-      let searchQuery = userQuery.split(",")[0] || userQuery;
-      let searchResults;
-      try {
-        const res = await pinterestSearch(searchQuery, desiredCount);
-        if (!res || !res.status || !Array.isArray(res.result)) {
-          return await message.sendReply("_No results found for this query_");
-        }
-        searchResults = res.result;
-      } catch (err) {
-        console.error("pinterestSearch error:", err?.message || err);
-        return await message.sendReply(
-          "_Server error while searching Pinterest_"
-        );
-      }
-
-      const toDownload = Math.min(desiredCount, searchResults.length);
-      await message.sendReply(
-        `_Downloading ${toDownload} results for ${searchQuery} from Pinterest_`
-      );
-
-      const imagesToSend = searchResults
-        .slice(0, toDownload)
-        .map((url) => ({ image: url }));
-      imagesToSend[0].caption = `_Pinterest results for ${searchQuery}_`;
-      try {
-        await message.client.albumMessage(
-          message.jid,
-          imagesToSend,
-          message.data
-        );
-      } catch (error) {
-        console.log(
-          "Album send failed, falling back to individual sends:",
-          error
-        );
-        for (const url of searchResults) {
-          try {
-            await message.sendMessage({ url }, "image");
-          } catch (error) {
-            console.error(
-              "Error downloading pinterest item:",
-              error?.message || error
-            );
-          }
-        }
-      }
+      return await message.sendReply("_User not found or server busy!_");
     }
   }
 );
 
+// 👑 TikTok Downloader
 Module(
   {
     pattern: "tiktok ?(.*)",
     fromMe: isFromMe,
-    desc: "TikTok video downloader",
-    usage: ".tiktok reply or link",
+    desc: "Download TikTok videos",
     use: "download",
   },
   async (message, match) => {
-    let videoLink = match[1] !== "" ? match[1] : message.reply_message.text;
-    if (!videoLink) return await message.sendReply("_Need a TikTok URL_");
-    videoLink = videoLink.match(/\bhttps?:\/\/\S+/gi)[0];
-    let downloadResult;
+    let link = match[1] || message.reply_message?.text;
+    if (!link) return await message.sendReply("_Provide TikTok link!_");
+    
+    link = link.match(/\bhttps?:\/\/\S+/gi)?.[0];
     try {
-      downloadResult = await tiktok(videoLink);
-      await message.sendReply(downloadResult, "video");
-    } catch (error) {
-      return await message.sendReply(
-        "_Something went wrong, Please try again!_"
-      );
+      await message.send("_Downloading TikTok..._");
+      const video = await tiktok(link);
+      return await message.sendReply(video, "video");
+    } catch {
+      return await message.sendReply("_Error downloading TikTok video._");
+    }
+  }
+);
+
+// 👑 Pinterest Search/Download
+Module(
+  {
+    pattern: "pinterest ?(.*)",
+    fromMe: isFromMe,
+    desc: "Download from Pinterest",
+    use: "download",
+  },
+  async (message, match) => {
+    let query = match[1] || message.reply_message?.text;
+    if (!query) return await message.sendReply("_Provide search term or Pin link!_");
+
+    if (query.includes("pinterest.com") || query.includes("pin.it")) {
+      try {
+        const res = await pinterestDl(query.match(/\bhttps?:\/\/\S+/gi)[0]);
+        return await message.sendMessage({ url: res.result }, "video", { caption: `*Generated by ${BOT_BRAND}*` });
+      } catch {
+        return await message.sendReply("_Failed to download Pinterest video._");
+      }
+    } else {
+      try {
+        let count = parseInt(query.split(",")[1]) || 5;
+        let q = query.split(",")[0];
+        const res = await pinterestSearch(q, count);
+        const album = res.result.slice(0, count).map(url => ({ image: url }));
+        album[0].caption = `*Pinterest Results for:* ${q}\n*By ${BOT_BRAND}*`;
+        return await message.client.albumMessage(message.jid, album, message.data);
+      } catch {
+        return await message.sendReply("_No results found!_");
+      }
     }
   }
 );

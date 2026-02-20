@@ -1,92 +1,79 @@
+const path = require("path");
+const fs = require("fs");
+if (fs.existsSync("./config.env")) {
+  require("dotenv").config({ path: "./config.env" });
+}
+
+const { suppressLibsignalLogs } = require("./core/helpers");
+
+suppressLibsignalLogs();
+
+const { initializeDatabase } = require("./core/database");
+const { BotManager } = require("./core/manager");
 const config = require("./config");
+const { SESSION, logger } = config;
+const http = require("http");
+const {
+  ensureTempDir,
+  TEMP_DIR,
+  initializeKickBot,
+  cleanupKickBot,
+} = require("./core/helpers");
 
-const Commands = [];
-let commandPrefix;
-let handlerPrefix;
-
-function escapeRegex(str) {
-  return String(str).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
-}
-
-function buildHandlerPrefix(rawHandlers, allowNoPrefix) {
-  if (rawHandlers === "^" || rawHandlers === "" || rawHandlers == null) {
-    return "^";
+async function main() {
+  ensureTempDir();
+  logger.info(`Created temporary directory at ${TEMP_DIR}`);
+  
+  // 👑 Zahid King Branding
+  console.log(`ZAHID-KING-MD v${config.VERSION}`);
+  console.log(`- Developer: Zᴀʜɪᴅ Kɪɴɢ`);
+  console.log(`- Configured sessions: ${SESSION.length}`);
+  
+  if (SESSION.length === 0) {
+    const warnMsg = "⚠️ No sessions found. Please set SESSION_ID.";
+    console.warn(warnMsg);
+    return;
   }
 
-  const handlersStr = String(rawHandlers);
-
-  if (handlersStr.length > 1 && handlersStr[0] === handlersStr[1]) {
-    const literal = `^${escapeRegex(handlersStr)}`;
-    return allowNoPrefix ? `${literal}?` : literal;
+  try {
+    await initializeDatabase();
+    console.log("- Database initialized (SQLite/Postgres)");
+  } catch (dbError) {
+    console.error("🚫 Database Connection Failed!", dbError);
+    process.exit(1);
   }
 
-  const parts = Array.from(handlersStr)
-    .map((h) => escapeRegex(h))
-    .filter(Boolean);
+  const botManager = new BotManager();
 
-  if (parts.length === 0) {
-    return "^";
-  }
-
-  const group = `^(?:${parts.join("|")})`;
-  return allowNoPrefix ? `${group}?` : group;
-}
-
-// ZAHID-KING: Prefix Setting
-if (config.HANDLERS === "false" || config.HANDLERS === "null") {
-  commandPrefix = "^";
-} else {
-  commandPrefix = config.HANDLERS;
-}
-
-handlerPrefix = buildHandlerPrefix(commandPrefix, Boolean(config.MULTI_HANDLERS));
-
-function Module(info, func) {
-  const validEventTypes = [
-    "photo",
-    "image",
-    "text",
-    "button",
-    "group-update",
-    "message",
-    "start",
-  ];
-
-  // 👑 Zahid-King Command Info Logic
-  const commandInfo = {
-    fromMe: info.fromMe ?? config.isPrivate, // config.js سے پرائیویٹ/پبلک موڈ اٹھائے گا
-    desc: info.desc ?? "",
-    usage: info.usage ?? "",
-    excludeFromCommands: info.excludeFromCommands ?? false,
-    warn: info.warn ?? "",
-    use: info.use ?? "",
-    dontAddCommandList: info.dontAddCommandList ?? false, // مینیو میں چھپانے کے لیے
-    function: func,
+  const shutdownHandler = async (signal) => {
+    console.log(`\nReceived ${signal}, shutting down...`);
+    cleanupKickBot();
+    await botManager.shutdown();
+    process.exit(0);
   };
 
-  if (info.on === undefined && info.pattern === undefined) {
-    commandInfo.on = "message";
-    commandInfo.fromMe = false;
-  } else if (info.on !== undefined && validEventTypes.includes(info.on)) {
-    commandInfo.on = info.on;
-    if (info.pattern !== undefined) {
-      const prefix = (info.handler ?? true) ? handlerPrefix : "";
-      const patternStr = `${prefix}${info.pattern}`;
-      commandInfo.pattern = new RegExp(patternStr, "s");
-    }
-  } else if (info.pattern !== undefined) {
-    const prefix = (info.handler ?? true) ? handlerPrefix : "";
-    // اس کو بہتر بنایا گیا ہے تاکہ کمانڈز درست طریقے سے میچ ہوں
-    const patternStr = `${prefix}${info.pattern}`;
-    commandInfo.pattern = new RegExp(patternStr, "s");
-  }
+  process.on("SIGINT", () => shutdownHandler("SIGINT"));
+  process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
 
-  Commands.push(commandInfo);
-  return commandInfo;
+  await botManager.initializeBots();
+  console.log("✅ ZAHID-KING-MD IS NOW ONLINE!");
+
+  initializeKickBot();
+
+  const startServer = () => {
+    const PORT = process.env.PORT || 3000;
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ZAHID-KING-MD is running perfectly!");
+    });
+    server.listen(PORT);
+  };
+
+  if (process.env.USE_SERVER !== "false") startServer();
 }
 
-module.exports = {
-  Module,
-  bot: Module, // کچھ پلگ انز 'bot' استعمال کرتے ہیں
-  commands: Commands,
-};
+if (require.main === module) {
+  main().catch((error) => {
+    process.exit(1);
+  });
+}

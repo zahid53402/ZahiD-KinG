@@ -1,80 +1,90 @@
+/**
+ * ZAHID-KING-MD Image Search Engine
+ * Powered by Google & Pinterest Scraper
+ */
+
 const REGEX = /\["(\bhttps?:\/\/[^"]+)",(\d+),(\d+)\],null/g;
 
 /**
- *
- * Async version of g-i-s module, source: npm
- * @async
- * @param {String} searchTerm Search term to search
- * @param {Object} options Options for search
- * @param {Object} options.query You can use a custom query
- * @param {String} options.userAgent User agent for request
- * @returns {Promise<[{url: string, height: number, width: number }]>} Array of results
+ * Google Image Search (GIS)
+ * @param {String} searchTerm - What to search
+ * @param {Number} limit - How many images
  */
 async function gis(searchTerm, limit, options = {}) {
   if (!searchTerm || typeof searchTerm !== "string") return [];
-  if (typeof options !== "object") return [];
 
   const {
-      query = {},
-      userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    } = options,
-    body = await fetch(
-      `http://www.google.com/search?${new URLSearchParams({
-        ...query,
-        udm: "2",
-        tbm: "isch",
-        q: searchTerm,
-      })}`,
-      { headers: { "User-Agent": userAgent } }
-    ).then((res) => res.text()),
-    content = body; //.slice(body.lastIndexOf("ds:1"), body.lastIndexOf("sideChannel"));
-  let result;
-  let urls = [];
-  let i = 0;
-  while ((result = REGEX.exec(content))) {
-    if (i == limit) break;
-    urls.push(result[1]);
-    i++;
-  }
-  return urls;
-}
+    query = {},
+    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  } = options;
 
-/**
- * @deprecated since 6.2.11
- */
-async function pinterestSearch(searchTerm, limit, options = {}) {
-  searchTerm = "pinterest " + searchTerm;
-  if (!searchTerm || typeof searchTerm !== "string") return [];
-  if (typeof options !== "object") return [];
+  try {
+    const url = `https://www.google.com/search?${new URLSearchParams({
+      ...query,
+      udm: "2",
+      tbm: "isch",
+      q: searchTerm,
+    })}`;
 
-  const {
-      query = {},
-      userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    } = options,
-    body = await fetch(
-      `http://www.google.com/search?${new URLSearchParams({
-        ...query,
-        udm: "2",
-        tbm: "isch",
-        q: searchTerm,
-      })}`,
-      { headers: { "User-Agent": userAgent } }
-    ).then((res) => res.text()),
-    content = body.slice(
-      body.lastIndexOf("ds:1"),
-      body.lastIndexOf("sideChannel")
-    );
+    const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+    const content = await response.text();
 
-  let result;
-  let urls = [];
-  let i = 0;
-  while ((result = REGEX.exec(content))) {
-    if (result[1].includes("pinimg.com")) {
+    let result;
+    let urls = [];
+    let i = 0;
+
+    while ((result = REGEX.exec(content))) {
       if (i == limit) break;
+      // Clean and push the image URL
       urls.push(result[1]);
       i++;
     }
+    return urls;
+  } catch (error) {
+    console.error("GIS Search Error:", error.message);
+    return [];
   }
-  return urls;
 }
+
+/**
+ * Pinterest Image Search
+ * Specifically filters for high-quality Pinterest pins
+ */
+async function pinterestSearch(searchTerm, limit, options = {}) {
+  const queryTerm = "pinterest " + searchTerm;
+  const {
+    query = {},
+    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  } = options;
+
+  try {
+    const url = `https://www.google.com/search?${new URLSearchParams({
+      ...query,
+      udm: "2",
+      tbm: "isch",
+      q: queryTerm,
+    })}`;
+
+    const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+    const content = await response.text();
+
+    let result;
+    let urls = [];
+    let i = 0;
+
+    while ((result = REGEX.exec(content))) {
+      // Only pick images from Pinterest domain
+      if (result[1].includes("pinimg.com")) {
+        if (i == limit) break;
+        urls.push(result[1]);
+        i++;
+      }
+    }
+    return urls;
+  } catch (error) {
+    console.error("Pinterest Search Error:", error.message);
+    return [];
+  }
+}
+
 module.exports = { gis, pinterestSearch };

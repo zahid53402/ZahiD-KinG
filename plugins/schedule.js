@@ -3,6 +3,8 @@ const { scheduledMessages } = require("./utils/db/schedulers");
 const moment = require("moment");
 let config = require("../config");
 
+const BOT_BRAND = "ZAHID-KING-MD";
+
 function isValidJID(text) {
   return (
     text.endsWith("@g.us") ||
@@ -10,6 +12,7 @@ function isValidJID(text) {
     text.endsWith("@lid")
   );
 }
+
 function parseTime(timeStr) {
   const now = moment();
   const durationMatch =
@@ -59,155 +62,112 @@ function parseTime(timeStr) {
   }
   return null;
 }
+
 async function createMessageObject(replyMessage) {
   let messageObj = {};
-  if (replyMessage.text) {
-    messageObj.text = replyMessage.text;
-  }
-  if (replyMessage.image) {
-    const buffer = await replyMessage.download("buffer");
-    messageObj.image = buffer.toString("base64");
-    if (replyMessage.caption) messageObj.caption = replyMessage.caption;
-    messageObj._mediaType = "image";
-  }
-  if (replyMessage.video) {
-    const buffer = await replyMessage.download("buffer");
-    messageObj.video = buffer.toString("base64");
-    if (replyMessage.caption) messageObj.caption = replyMessage.caption;
-    messageObj._mediaType = "video";
-    if (replyMessage.gifPlayback) messageObj.gifPlayback = true;
-  }
-  if (replyMessage.audio) {
-    const buffer = await replyMessage.download("buffer");
-    messageObj.audio = buffer.toString("base64");
-    messageObj.mimetype = replyMessage.mimetype || "audio/mp4";
-    messageObj._mediaType = "audio";
-    if (replyMessage.ptt) messageObj.ptt = true;
-  }
-  if (replyMessage.document) {
-    const buffer = await replyMessage.download("buffer");
-    messageObj.document = buffer.toString("base64");
-    messageObj.fileName = replyMessage.fileName || "document";
-    messageObj.mimetype = replyMessage.mimetype;
-    messageObj._mediaType = "document";
-  }
-  if (replyMessage.sticker) {
-    const buffer = await replyMessage.download("buffer");
-    messageObj.sticker = buffer.toString("base64");
-    messageObj._mediaType = "sticker";
+  if (replyMessage.text) messageObj.text = replyMessage.text;
+  
+  const mediaTypes = ["image", "video", "audio", "document", "sticker"];
+  for (const type of mediaTypes) {
+    if (replyMessage[type]) {
+      const buffer = await replyMessage.download("buffer");
+      messageObj[type] = buffer.toString("base64");
+      messageObj._mediaType = type;
+      if (replyMessage.caption) messageObj.caption = replyMessage.caption;
+      if (type === "audio") {
+        messageObj.mimetype = replyMessage.mimetype || "audio/mp4";
+        if (replyMessage.ptt) messageObj.ptt = true;
+      }
+      if (type === "video" && replyMessage.gifPlayback) messageObj.gifPlayback = true;
+      if (type === "document") {
+        messageObj.fileName = replyMessage.fileName || "document";
+        messageObj.mimetype = replyMessage.mimetype;
+      }
+      break;
+    }
   }
   return JSON.stringify(messageObj);
 }
+
+// 👑 Command: Schedule Message
 Module(
   {
     pattern: "schedule ?(.*)",
     use: "utility",
-    desc: "Schedule a message to be sent later. Reply to a message with: schedule <jid> <time> or schedule <time> <jid>",
+    desc: "Schedule a message to be sent later",
   },
   async (m, match) => {
     if (match[1] === "d") return;
     if (!m.reply_message) {
       return await m.sendReply(
-        "_Reply to a message you want to schedule_\n\n*Usage:*\n• schedule <jid> <time>\n• schedule <time> <jid>\n\n*Time formats:*\n• 2h30m (2 hours 30 minutes)\n• 1d (1 day)\n• 30m (30 minutes)\n• 14:30 (2:30 PM today)\n• 2:45pm (2:45 PM today)"
+        `*───「 ${BOT_BRAND} 」───*\n\n` +
+        `_Reply to a message to schedule it._\n\n` +
+        `*Usage:* .schedule <jid> <time>\n` +
+        `*Time Examples:* 1h, 30m, 1d, 14:30, 2:45pm`
       );
     }
-    if (!match[1]) {
-      return await m.sendReply(
-        "_Please provide JID and time_\n\n*Example:*\n• schedule 919876543210@s.whatsapp.net 2h\n• schedule 919876543210@lid 2h\n• schedule 30m 919876543210@s.whatsapp.net"
-      );
-    }
-    const args = match[1].trim().split(/\s+/);
-    if (args.length < 2) {
-      return await m.sendReply("_Please provide both JID and time_");
-    }
+    
+    const args = match[1]?.trim().split(/\s+/);
+    if (!args || args.length < 2) return await m.sendReply("_Provide both JID and time!_");
+
     let jid, timeStr;
-    if (isValidJID(args[0])) {
-      jid = args[0];
-      timeStr = args.slice(1).join(" ");
-    } else if (isValidJID(args[args.length - 1])) {
-      jid = args[args.length - 1];
-      timeStr = args.slice(0, -1).join(" ");
+    const jidArg = args.find(arg => isValidJID(arg));
+    if (jidArg) {
+      jid = jidArg;
+      timeStr = args.filter(arg => arg !== jidArg).join(" ");
     } else {
-      const jidArg = args.find((arg) => isValidJID(arg));
-      if (jidArg) {
-        jid = jidArg;
-        timeStr = args.filter((arg) => arg !== jidArg).join(" ");
-      } else {
-        return await m.sendReply(
-          "_Invalid JID format. JID should end with @g.us, @s.whatsapp.net, or @lid_"
-        );
-      }
+      return await m.sendReply("_Invalid JID format! (e.g., @g.us or @s.whatsapp.net)_");
     }
+
     const scheduleTime = parseTime(timeStr);
-    if (!scheduleTime) {
-      return await m.sendReply(
-        "_Invalid time format_\n\n*Supported formats:*\n• 2h30m, 1d, 30m, 5s\n• 14:30, 2:45pm\n• YYYY-MM-DD HH:mm"
-      );
-    }
+    if (!scheduleTime) return await message.sendReply("_Invalid time format! Use 2h, 10m, or HH:mm._");
+
     const originalTime = moment(scheduleTime).add(1, "minute").toDate();
-    if (originalTime <= new Date()) {
-      return await m.sendReply("_Schedule time must be in the future_");
-    }
-    const minTime = moment().add(2, "minutes").toDate();
-    if (originalTime < minTime) {
-      return await m.sendReply(
-        "_Minimum scheduling time is 2 minutes. Please schedule for at least 2 minutes from now._"
-      );
-    }
+    if (originalTime <= new Date()) return await m.sendReply("_Time must be in the future!_");
+
     try {
       const messageData = await createMessageObject(m.reply_message);
       await scheduledMessages.add(jid, messageData, scheduleTime);
+      
       const timeFromNow = moment(scheduleTime).add(1, "minute").fromNow();
-      const formattedTime = moment(scheduleTime)
-        .add(1, "minute")
-        .format("DD/MM/YYYY HH:mm");
       await m.sendReply(
-        `✅ *Message scheduled successfully!*\n\n📅 *Time:* ${formattedTime}\n⏰ *From now:* ${timeFromNow}\n📱 *Target:* ${jid}`
+        `✅ *Message Scheduled!*\n\n` +
+        `📅 *Date:* ${moment(scheduleTime).add(1, "minute").format("DD/MM/YYYY HH:mm")}\n` +
+        `⏰ *Starts:* ${timeFromNow}\n` +
+        `📱 *To:* ${jid}`
       );
     } catch (error) {
-      console.error("Schedule error:", error);
-      await m.sendReply("_Failed to schedule message. Please try again._");
+      await m.sendReply("_Failed to schedule message._");
     }
   }
 );
+
+// 👑 Command: List Scheduled Messages
 Module(
   {
     pattern: "scheduled ?(.*)",
     use: "utility",
-    desc: "List all pending scheduled messages",
+    desc: "List pending schedules",
   },
-  async (m, match) => {
+  async (m) => {
     try {
       const pending = await scheduledMessages.getAllPending();
-      if (pending.length === 0) {
-        return await m.sendReply("📭 _No pending scheduled messages_");
-      }
-      let response = "📋 *Scheduled Messages*\n\n";
-      pending.sort(
-        (a, b) => a.scheduleTime.getTime() - b.scheduleTime.getTime()
-      );
-      pending.forEach((msg, index) => {
-        const timeFromNow = moment(msg.scheduleTime).add(1, "minute").fromNow();
-        const formattedTime = moment(msg.scheduleTime)
-          .add(1, "minute")
-          .format("DD/MM/YYYY HH:mm");
-        const preview = JSON.parse(msg.message);
-        let content = preview.text || preview.caption || "Media message";
-        if (content.length > 30) content = content.substring(0, 30) + "...";
-        response += `${index + 1}. *ID:* ${msg.id}\n`;
-        response += `   *To:* ${msg.jid}\n`;
-        response += `   *Time:* ${formattedTime}\n`;
-        response += `   *In:* ${timeFromNow}\n`;
-        response += `   *Content:* ${content}\n\n`;
+      if (pending.length === 0) return await m.sendReply("_No pending messages scheduled._");
+
+      let response = `*───「 ${BOT_BRAND} SCHEDULES 」───*\n\n`;
+      pending.sort((a, b) => a.scheduleTime - b.scheduleTime).forEach((msg, i) => {
+        const timeStr = moment(msg.scheduleTime).add(1, "minute").format("HH:mm (DD/MM)");
+        response += `*${i + 1}. ID:* \`${msg.id}\`\n   *To:* ${msg.jid.split("@")[0]}\n   *At:* ${timeStr}\n\n`;
       });
-      response += '_Use "cancel <id>" to cancel a scheduled message_';
+      response += `_Use ".cancel <id>" to remove._`;
       await m.sendReply(response);
-    } catch (error) {
-      console.error("List scheduled error:", error);
-      await m.sendReply("_Failed to fetch scheduled messages_");
+    } catch (e) {
+      await m.sendReply("_Error fetching list._");
     }
   }
 );
+
+// 👑 Command: Cancel Schedule
 Module(
   {
     pattern: "cancel ?(.*)",
@@ -215,27 +175,13 @@ Module(
     desc: "Cancel a scheduled message by ID",
   },
   async (m, match) => {
-    if (!match[1]) {
-      return await m.sendReply(
-        "_Please provide message ID to cancel_\n\n*Usage:* cancel <id>"
-      );
-    }
-    const messageId = parseInt(match[1].trim());
-    if (isNaN(messageId)) {
-      return await m.sendReply("_Please provide a valid message ID_");
-    }
+    if (!match[1]) return await m.sendReply("_Provide a message ID! Usage: .cancel 5_");
+    const id = parseInt(match[1]);
     try {
-      const success = await scheduledMessages.delete(messageId);
-      if (success) {
-        await m.sendReply(
-          `✅ *Scheduled message ${messageId} cancelled successfully*`
-        );
-      } else {
-        await m.sendReply("❌ *Message not found or already sent*");
-      }
-    } catch (error) {
-      console.error("Cancel scheduled error:", error);
-      await m.sendReply("_Failed to cancel scheduled message_");
+      const success = await scheduledMessages.delete(id);
+      return await m.sendReply(success ? `_✅ Schedule ID ${id} cancelled._` : "_❌ ID not found._");
+    } catch (e) {
+      await m.sendReply("_Error cancelling message._");
     }
   }
 );

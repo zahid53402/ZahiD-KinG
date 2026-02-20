@@ -2,18 +2,18 @@ const { Module } = require("../main");
 const fs = require("fs");
 const ffmpeg = require("fluent-ffmpeg");
 const { getTempPath, getTempSubdir } = require("../core/helpers");
-
-const config = require("../config"),
-  MODE = config.MODE;
-const { getString } = require("./utils/lang");
+const config = require("../config");
 const { avMix, circle, rotate, trim } = require("./utils");
 const acrcloud = require("acrcloud");
+
+const BOT_BRAND = "ZAHID-KING-MD";
+
 const acr = new acrcloud({
   host: "identify-eu-west-1.acrcloud.com",
   access_key: config.ACR_A,
   access_secret: config.ACR_S,
 });
-var handler = config.HANDLERS !== "false" ? config.HANDLERS.split("")[0] : "";
+
 async function findMusic(file) {
   return new Promise((resolve, reject) => {
     acr.identify(file).then((result) => {
@@ -22,54 +22,53 @@ async function findMusic(file) {
     });
   });
 }
-const Lang = getString("media");
+
+// 👑 Trim Audio/Video
 Module(
   {
     pattern: "trim ?(.*)",
-    desc: Lang.TRIM_DESC,
-    usage: Lang.TRIM_USE,
+    desc: "Cut audio or video by start and end time",
+    usage: ".trim 00:01,00:10",
     use: "edit",
   },
   async (message, match) => {
-    if (
-      !message.reply_message ||
-      (!message.reply_message.video && !message.reply_message.audio)
-    )
-      return await message.sendReply(Lang.TRIM_NEED_REPLY);
+    if (!message.reply_message || (!message.reply_message.video && !message.reply_message.audio))
+      return await message.sendReply("_Reply to an audio or video file!_");
+    
     if (!match[1] || !match[1].includes(","))
-      return await message.sendReply(
-        message.reply_message.audio ? Lang.TRIM_NEED : Lang.TRIM_VIDEO_NEED
-      );
+      return await message.sendReply("_Provide start and end time. Example: .trim 00:01,00:10_");
+
     const parts = match[1].split(",");
     const start = parts[0]?.trim();
     const end = parts[1]?.trim();
     const savedFile = await message.reply_message.download();
-    await message.sendMessage("_Processing trim..._");
+    
+    await message.send(`_Processing ${message.reply_message.audio ? 'Audio' : 'Video'} Trim..._`);
+    
+    const out = getTempPath(`trim_${Date.now()}.${message.reply_message.audio ? 'ogg' : 'mp4'}`);
+    await trim(savedFile, start, end, out);
+    
     if (message.reply_message.audio) {
-      const out = getTempPath("trim.ogg");
-      await trim(savedFile, start, end, out);
       await message.sendReply({stream: fs.createReadStream(out)}, "audio");
-    } else if (message.reply_message.video) {
-      const out = getTempPath("trim.mp4");
-      await trim(savedFile, start, end, out);
+    } else {
       await message.send({stream: fs.createReadStream(out)}, "video");
     }
   }
 );
+
+// 👑 Audio to Black Video
 Module(
   {
     pattern: "black",
-    desc: "Audio to black video",
+    desc: "Convert audio to black screen video",
     use: "edit",
   },
   async (message, match) => {
     if (!message.reply_message || !message.reply_message.audio)
-      return await message.send("_Need audio!_");
+      return await message.send("_Reply to an audio file!_");
 
     try {
-      const processingMsg = await message.sendReply(
-        "_Processing audio to black video..._"
-      );
+      await message.sendReply("_Converting audio to black video..._");
       const audioFile = await message.reply_message.download();
       const outputPath = getTempPath(`black_${Date.now()}.mp4`);
 
@@ -78,311 +77,97 @@ Module(
           .input(audioFile)
           .input("color=c=black:s=320x240:r=30")
           .inputFormat("lavfi")
-          .outputOptions([
-            "-shortest",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "51",
-            "-c:a",
-            "copy",
-            "-pix_fmt",
-            "yuv420p",
-          ])
+          .outputOptions(["-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "51", "-c:a", "copy", "-pix_fmt", "yuv420p"])
           .format("mp4")
           .save(outputPath)
           .on("end", resolve)
           .on("error", reject);
       });
 
-      const videoBuffer = fs.readFileSync(outputPath);
-      await message.send(videoBuffer, "video");
-      await message.edit(
-        "_Black video created successfully!_",
-        message.jid,
-        processingMsg.key
-      );
+      await message.send(fs.readFileSync(outputPath), "video");
       if (fs.existsSync(audioFile)) fs.unlinkSync(audioFile);
       if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
     } catch (error) {
-      console.error("Black video creation error:", error);
-      await message.send("_Failed to create black video. Please try again._");
+      await message.send("_Failed to process video._");
     }
   }
 );
-Module(
-  {
-    pattern: "avmix",
-    desc: Lang.AVMIX_DESC,
-    use: "edit",
-  },
-  async (message, match) => {
-    const avmixDir = getTempSubdir("avmix");
-    let files = fs.readdirSync(avmixDir);
-    if (
-      (!message.reply_message && files.length < 2) ||
-      (message.reply_message &&
-        !message.reply_message.audio &&
-        !message.reply_message.video)
-    )
-      return await message.send(Lang.AVMIX_NEED_FILES);
-    if (message.reply_message.audio) {
-      var savedFile = await message.reply_message.download();
-      await fs.writeFileSync(
-        getTempPath("avmix/audio.mp3"),
-        fs.readFileSync(savedFile)
-      );
-      return await message.sendReply(Lang.AVMIX_AUDIO_ADDED);
-    }
-    if (message.reply_message.video) {
-      var savedFile = await message.reply_message.download();
-      await fs.writeFileSync(
-        getTempPath("avmix/video.mp4"),
-        fs.readFileSync(savedFile)
-      );
-      return await message.sendReply(Lang.AVMIX_VIDEO_ADDED);
-    }
-    if (files.length >= 2 || !message.reply_message) {
-      let video = await avMix(
-        getTempPath("avmix/video.mp4"),
-        getTempPath("avmix/audio.mp3")
-      );
-      await message.sendReply(video, "video");
-      await fs.unlinkSync(getTempPath("avmix/video.mp4"));
-      await fs.unlinkSync(getTempPath("avmix/audio.mp3"));
-      await fs.unlinkSync("./merged.mp4");
-      return;
-    }
-  }
-);
-Module(
-  {
-    pattern: "vmix ?(.*)",
-    desc: "Merges/Joins two videos",
-    use: "edit",
-  },
-  async (message, match) => {
-    const vmixDir = getTempSubdir("vmix");
-    let files = fs.readdirSync(vmixDir);
-    if (
-      (!message.reply_message && files.length < 2) ||
-      (message.reply_message && !message.reply_message.video)
-    )
-      return await message.send("Give me videos");
-    if (message.reply_message.video && files.length == 1) {
-      var savedFile = await message.reply_message.download();
-      await fs.writeFileSync(
-        getTempPath("vmix/video1.mp4"),
-        fs.readFileSync(savedFile)
-      );
-      return await message.sendReply(
-        "*Added video 2. Type .vmix again to process!*"
-      );
-    }
-    if (message.reply_message.video && files.length == 0) {
-      var savedFile = await message.reply_message.download();
-      await fs.writeFileSync(
-        getTempPath("vmix/video2.mp4"),
-        fs.readFileSync(savedFile)
-      );
-      return await message.sendReply("*Added video 1*");
-    }
-    async function merge(files, folder, filename) {
-      return new Promise((resolve, reject) => {
-        var cmd = ffmpeg({ priority: 20 })
-          .fps(29.7)
-          .on("error", function (err) {
-            resolve();
-          })
-          .on("end", function () {
-            resolve(fs.readFileSync(folder + "/" + filename));
-          });
 
-        for (var i = 0; i < files.length; i++) {
-          cmd.input(files[i]);
-        }
-
-        cmd.mergeToFile(folder + "/" + filename, folder);
-      });
-    }
-    if (files.length === 2) {
-      await message.sendReply("*Merging videos..*");
-      await message.send(
-        await merge(
-          [getTempPath("vmix/video1.mp4"), getTempPath("vmix/video2.mp4")],
-          getTempSubdir(""),
-          "merged.mp4"
-        ),
-        "video"
-      );
-      await fs.unlinkSync(getTempPath("vmix/video1.mp4"));
-      await fs.unlinkSync(getTempPath("vmix/video2.mp4"));
-      return;
-    }
-  }
-);
+// 👑 Slow Motion Video
 Module(
   {
     pattern: "slowmo",
-    desc: "Video to smooth slow motion",
+    desc: "Create smooth slow motion video",
     use: "edit",
   },
   async (message, match) => {
     if (!message.reply_message || !message.reply_message.video)
-      return await message.sendReply("*Reply to a video*");
+      return await message.sendReply("_Reply to a video!_");
+    
     var savedFile = await message.reply_message.download();
-    await message.sendReply("*Motion interpolating and rendering..*");
+    await message.send("_Applying motion interpolation and rendering..._");
+    
+    const out = getTempPath("slowmo.mp4");
     ffmpeg(savedFile)
-      .videoFilters("minterpolate=fps=120")
-      .videoFilters("setpts=4*PTS")
+      .videoFilters("minterpolate=fps=120", "setpts=4*PTS")
       .noAudio()
       .format("mp4")
-      .save(getTempPath("slowmo.mp4"))
+      .save(out)
       .on("end", async () => {
-        return await message.send(
-          fs.readFileSync(getTempPath("slowmo.mp4")),
-          "video"
-        );
+        await message.send(fs.readFileSync(out), "video");
       });
   }
 );
-Module(
-  {
-    pattern: "circle",
-    desc: "Sticker/photo to circle crop",
-    use: "edit",
-  },
-  async (message, match) => {
-    await circle(message);
-  }
-);
-Module(
-  {
-    pattern: "gif",
-    desc: "Video to gif with audio",
-  },
-  async (message, match) => {
-    if (!message.reply_message || !message.reply_message.video)
-      return await message.sendReply("*Reply to a video*");
-    var savedFile = await message.reply_message.download();
-    await message.sendReply("*Rendering..*");
-    ffmpeg(savedFile)
-      .fps(13)
-      .videoBitrate(500)
-      .save(getTempPath("agif.mp4"))
-      .on("end", async () => {
-        return await message.client.sendMessage(message.jid, {
-          video: fs.readFileSync(getTempPath("agif.mp4")),
-          gifPlayback: true,
-        });
-      });
-  }
-);
-Module(
-  {
-    pattern: "interp ?(.*)",
-    desc: "Increases video's frame rate (FPS)",
-    use: "edit",
-  },
-  async (message, match) => {
-    if (!message.reply_message || !message.reply_message.video)
-      return await message.sendReply("*Reply to a video*");
-    if (match[1] <= 10)
-      return await message.send("*Low FPS Value ⚠️*\n*Minimun = 10*");
-    if (match[1] >= 500)
-      return await message.send("*High FPS Value ⚠️*\n*Maximum = 500*");
-    var savedFile = await message.reply_message.download();
-    await message.sendReply("*Motion interpolating and rendering..*");
-    ffmpeg(savedFile)
-      .videoFilters(`minterpolate=fps=${match[1]}:mi_mode=mci:me_mode=bidir`)
-      .format("mp4")
-      .save(getTempPath("interp.mp4"))
-      .on("end", async () => {
-        return await message.send(
-          fs.readFileSync(getTempPath("interp.mp4")),
-          "video"
-        );
-      });
-  }
-);
+
+// 👑 Find Music AI
 Module(
   {
     pattern: "find ?(.*)",
-    desc: "Finds music name using AI",
-    usage: ".find reply to a music",
+    desc: "Identify music name using AI",
     use: "search",
   },
   async (message, match) => {
     if (!message.reply_message?.audio)
-      return await message.sendReply("_Reply to a music_");
+      return await message.sendReply("_Reply to a music/audio file!_");
+    
     if (message.reply_message.duration > 60)
-      return await message.send(
-        "_Audio too large! Use .trim command and cut the audio to < 60 secs_"
-      );
+      return await message.send("_Audio is too long. Use .trim to cut it below 60 seconds._");
+    
+    await message.send("_Searching for music details..._");
     var audio = await message.reply_message.download("buffer");
     var data = await findMusic(audio);
-    if (!data) return await message.sendReply("_No matching results found!_");
-    var buttons = [];
-    function getDuration(millis) {
-      var minutes = Math.floor(millis / 60000);
-      var seconds = ((millis % 60000) / 1000).toFixed(0);
-      return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
-    }
-    const Message = {
-      text: `*Title:* ${data.title}\n
-Artists: ${data.artists?.map((e) => e.name + " ")}\n
-Released on: ${data.release_date}\n
-Duration: ${getDuration(data.duration_ms)}\n
-Album: ${data.album?.name}\n
-Genres: ${data.genres?.map((e) => e.name + " ")}\n
-Label: ${data.label}\n
-Spotify: ${"spotify" in data.external_metadata ? "Available" : "Unavailable"}\n
-YouTube: ${
-        "youtube" in data.external_metadata
-          ? "https://youtu.be/" + data.external_metadata.youtube.vid
-          : "Unavailable"
-      }\n`,
-      //    footer: '🎼 Listen to full music on',
-      //    buttons,
-      //    headerType:1
-    };
-    await message.client.sendMessage(message.jid, Message);
+    
+    if (!data) return await message.sendReply("_No matching music found!_");
+    
+    let msg = `*───「 ${BOT_BRAND} 」───*\n\n`;
+    msg += `*Title:* ${data.title}\n`;
+    msg += `*Artist:* ${data.artists?.map((e) => e.name).join(", ")}\n`;
+    msg += `*Album:* ${data.album?.name || "N/A"}\n`;
+    msg += `*Released:* ${data.release_date || "N/A"}\n`;
+    msg += `*YouTube:* ${data.external_metadata?.youtube ? "https://youtu.be/" + data.external_metadata.youtube.vid : "Not Available"}`;
+    
+    await message.sendReply(msg);
   }
 );
+
+// 👑 Rotate Video
 Module(
   {
     pattern: "rotate ?(.*)",
-    desc: "Rotates video (left/right)",
+    desc: "Rotate video (left/right/flip)",
+    use: "edit",
   },
   async (message, match) => {
-    if (!match[1] || !message.reply_message || !message.reply_message.video)
-      return await message.sendReply(
-        "*Reply to a video*\n*.rotate left|right|flip*"
-      );
+    if (!message.reply_message || !message.reply_message.video)
+      return await message.sendReply("_Reply to a video! Usage: .rotate left|right|flip_");
+    
     var file = await message.reply_message.download();
-    var angle = "1";
+    var angle = "1"; // default right
     if (match[1] === "left") angle = "2";
     if (match[1] === "flip") angle = "3";
-    await message.send("_Processing..._");
-    await message.sendReply(
-      fs.readFileSync(await rotate(file, angle)),
-      "video"
-    );
-  }
-);
-Module(
-  { pattern: "flip ?(.*)", desc: "Flips video" },
-  async (message, match) => {
-    if (!message.reply_message || !message.reply_message.video)
-      return await message.sendReply("*Reply to a video*");
-    var file = await message.reply_message.download();
-    var angle = "3";
-    await message.send("_Processing..._");
-    await message.sendReply(
-      fs.readFileSync(await rotate(file, angle)),
-      "video"
-    );
+    
+    await message.send("_Rotating video, please wait..._");
+    const rotatedFile = await rotate(file, angle);
+    await message.send(fs.readFileSync(rotatedFile), "video");
   }
 );

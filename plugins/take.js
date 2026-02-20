@@ -9,141 +9,118 @@ const {
 const { Module } = require("../main");
 let config = require("../config");
 let fs = require("fs");
+
+const BOT_BRAND = "ZAHID-KING-MD";
+
 Module(
   {
     pattern: "take ?(.*)",
     use: "edit",
-    desc: "Changes sticker/audio pack & author name. Title, artist, thumbnail etc.",
+    desc: "Changes sticker pack name or audio metadata.",
   },
   async (m, match) => {
     if (!m.reply_message)
       return await m.sendMessage("_Reply to an audio or a sticker_");
+    
     var audiomsg = m.reply_message.audio;
     var stickermsg = m.reply_message.sticker;
     var q = await m.reply_message.download();
+
+    // 👑 Handle Sticker Ownership
     if (stickermsg) {
+      let packname, author;
       if (match[1] !== "") {
-        var exif = {
-          author: match[1].includes(";") ? match[1].split(";")[1] : "",
-          packname: match[1].includes(";") ? match[1].split(";")[0] : match[1],
-          categories: config.STICKER_DATA.split(";")[2] || "😂",
-          android: "https://github.com/zahid53402/ZahiD-KinG.git",
-          ios: "https://github.com/zahid53402/ZahiD-KinG.git",
-        };
+        packname = match[1].includes(";") ? match[1].split(";")[0] : match[1];
+        author = match[1].includes(";") ? match[1].split(";")[1] : BOT_BRAND;
       } else {
-        var exif = {
-          author: config.STICKER_DATA.split(";")[1] || "",
-          packname: config.STICKER_DATA.split(";")[0] || "",
-          categories: config.STICKER_DATA.split(";")[2] || "😂",
-          android: "https://github.com/zahid53402/ZahiD-KinG.git",
-          ios: "https://github.com/zahid53402/ZahiD-KinG.git",
-        };
+        packname = config.STICKER_DATA.split(";")[0] || BOT_BRAND;
+        author = config.STICKER_DATA.split(";")[1] || "Official Bot";
       }
+
+      var exif = {
+        author: author,
+        packname: packname,
+        categories: ["😂", "😎"],
+        android: "https://zahid-king.com", // Updated to generic or your site
+        ios: "https://zahid-king.com",
+      };
+
       return await m.client.sendMessage(
         m.jid,
         { sticker: fs.readFileSync(await addExif(q, exif)) },
         { quoted: m.quoted }
       );
     }
-    if (!stickermsg && audiomsg) {
-      let inf =
-        match[1] !== ""
-          ? match[1]
-          : config.AUDIO_DATA === "default"
-          ? "Ryzn- Audio title here;Zᴀʜɪᴅ Kɪɴɢ - Artist;https://i.ibb.co/KT44BC8/temp.jpg"
-          : config.AUDIO_DATA;
-      if (config.AUDIO_DATA == "default") {
-        await m.sendReply(
-          `_Using default audio metadata, use .setvar AUDIO_INFO=title;artist;imageurl to change_`
-        );
+
+    // 👑 Handle Audio Metadata (Title/Artist)
+    if (audiomsg) {
+      let info = match[1] || config.AUDIO_DATA;
+      if (info === "default") {
+        info = `${BOT_BRAND} Audio;ZAHID-KING;https://i.imgur.com/8QnUq9Y.jpeg`;
       }
-      let spl = inf.split(";"),
-        image = spl[2]
-          ? await getBuffer(spl[2])
-          : await getBuffer(
-              config.BOT_INFO.split(";")?.[3] === "default"
-                ? "https://i.ibb.co/KT44BC8/temp.jpg"
-                : config.BOT_INFO.split(";")[3]
-            ),
-        res = await addID3(
-          q,
-          spl[0],
-          spl[1] ? spl[1] : config.AUDIO_DATA.split(";")[1],
-          "Zᴀʜɪᴅ Kɪɴɢ Engine",
-          image
-        );
-      await m.client.sendMessage(
-        m.jid,
-        {
-          audio: res,
-          mimetype: "audio/mp4",
-        },
-        {
-          quoted: m.quoted,
-          ptt: false,
-        }
-      );
-    }
-    if (!audiomsg && !stickermsg)
+
+      let spl = info.split(";");
+      let title = spl[0] || "Zahid-King-Audio";
+      let artist = spl[1] || BOT_BRAND;
+      let imageUrl = spl[2] || "https://i.imgur.com/8QnUq9Y.jpeg";
+
+      let image = await getBuffer(imageUrl);
+      let res = await addID3(q, title, artist, BOT_BRAND, image);
+
       return await m.client.sendMessage(
         m.jid,
-        {
-          text: "_Reply to an audio or a sticker_",
-        },
-        {
-          quoted: m.data,
-        }
+        { audio: res, mimetype: "audio/mp4", ptt: false },
+        { quoted: m.quoted }
       );
+    }
+
+    if (!audiomsg && !stickermsg)
+      return await m.sendReply("_Reply to an audio or a sticker!_");
   }
 );
+
+// 👑 Command: Convert Animated Sticker to MP4
 Module(
   {
     pattern: "mp4 ?(.*)",
     use: "edit",
     desc: "Converts animated sticker to video",
   },
-  async (m, t) => {
-    if (m.reply_message.sticker) {
-      var q = await m.reply_message.download();
-      try {
-        var result = await webp2mp4(q, __dirname + "/temp/output.mp4");
-      } catch (e) {
-        console.log(e);
-        return await m.sendReply("*Failed*");
-      }
-      await m.client.sendMessage(
-        m.jid,
-        {
-          video: {
-            url: __dirname + "/temp/output.mp4",
-          },
-        },
-        { quoted: m.quoted }
-      );
-    } else return await m.sendReply("_Reply to an animated sticker!_");
+  async (m) => {
+    if (!m.reply_message.sticker) return await m.sendReply("_Reply to an animated sticker!_");
+    
+    await m.send("_Converting to MP4..._");
+    var q = await m.reply_message.download();
+    try {
+      let path = __dirname + "/temp/output.mp4";
+      await webp2mp4(q, path);
+      await m.client.sendMessage(m.jid, { video: { url: path }, caption: `*Converted by ${BOT_BRAND}*` }, { quoted: m.quoted });
+    } catch (e) {
+      return await m.sendReply("_Failed to convert sticker._");
+    }
   }
 );
 
+// 👑 Command: Get Media URL (ImgBB/Catbox)
 Module(
   {
     pattern: "url ?(.*)",
-    desc: "Uploads image to imgbb and sends a url",
+    desc: "Uploads media and returns a direct link",
     use: "edit",
   },
-  async (m, match) => {
+  async (m) => {
+    if (!m.reply_message) return await m.sendReply("_Reply to any image, video, or audio!_");
+    
+    await m.send("_Uploading to cloud..._");
+    let q = await m.reply_message.download();
     let result;
-    if (m.reply_message?.image || m.reply_message?.sticker) {
-      let q = await m.reply_message.download();
+
+    if (m.reply_message.image || m.reply_message.sticker) {
       result = await uploadToImgbb(q);
-      return await m.sendReply(result.url);
-    } else if (
-      m.reply_message?.video ||
-      m.reply_message?.document ||
-      m.reply_message?.audio
-    ) {
-      let q = await m.reply_message.download();
+    } else {
       result = await uploadToCatbox(q);
-      return await m.sendReply(result.url);
     }
+
+    return await m.sendReply(`*───「 URL GENERATED 」───*\n\n*Link:* ${result.url || result}\n\n*By ${BOT_BRAND}*`);
   }
 );

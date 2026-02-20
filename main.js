@@ -32,7 +32,8 @@ function buildHandlerPrefix(rawHandlers, allowNoPrefix) {
   return allowNoPrefix ? `${group}?` : group;
 }
 
-if (config.HANDLERS === "false") {
+// ZAHID-KING: Prefix Setting
+if (config.HANDLERS === "false" || config.HANDLERS === "null") {
   commandPrefix = "^";
 } else {
   commandPrefix = config.HANDLERS;
@@ -51,13 +52,15 @@ function Module(info, func) {
     "start",
   ];
 
+  // 👑 Zahid-King Command Info Logic
   const commandInfo = {
-    fromMe: info.fromMe ?? config.isPrivate,
+    fromMe: info.fromMe ?? config.isPrivate, // config.js سے پرائیویٹ/پبلک موڈ اٹھائے گا
     desc: info.desc ?? "",
     usage: info.usage ?? "",
     excludeFromCommands: info.excludeFromCommands ?? false,
     warn: info.warn ?? "",
     use: info.use ?? "",
+    dontAddCommandList: info.dontAddCommandList ?? false, // مینیو میں چھپانے کے لیے
     function: func,
   };
 
@@ -73,6 +76,7 @@ function Module(info, func) {
     }
   } else if (info.pattern !== undefined) {
     const prefix = (info.handler ?? true) ? handlerPrefix : "";
+    // اس کو بہتر بنایا گیا ہے تاکہ کمانڈز درست طریقے سے میچ ہوں
     const patternStr = `${prefix}${info.pattern}`;
     commandInfo.pattern = new RegExp(patternStr, "s");
   }
@@ -83,5 +87,6 @@ function Module(info, func) {
 
 module.exports = {
   Module,
+  bot: Module, // کچھ پلگ انز 'bot' استعمال کرتے ہیں
   commands: Commands,
 };

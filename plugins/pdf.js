@@ -7,19 +7,14 @@ const path = require("path");
 const fs = require("fs");
 const { getTempSubdir, getTempPath } = require("../core/helpers");
 
+const BOT_BRAND = "ZAHID-KING-MD";
+
 const getFileType = async (buffer) => {
   try {
-    if (fileType.fileTypeFromBuffer) {
-      return await fileType.fileTypeFromBuffer(buffer);
-    }
-
-    if (fileType.fromBuffer) {
-      return await fileType.fromBuffer(buffer);
-    }
-
+    if (fileType.fileTypeFromBuffer) return await fileType.fileTypeFromBuffer(buffer);
+    if (fileType.fromBuffer) return await fileType.fromBuffer(buffer);
     return await fileType(buffer);
   } catch (error) {
-    console.log("file-type detection failed:", error);
     return null;
   }
 };
@@ -31,44 +26,45 @@ Module(
   {
     pattern: "pdf ?(.*)",
     fromMe: MODE === "private",
-    desc: "Images to PDF",
+    desc: "Convert multiple images into a single PDF file",
     use: "converters",
     usage: ".pdf help",
   },
   async (message, commandArguments) => {
     const subCommand = commandArguments[1]?.toLowerCase();
 
+    // 👑 Help Menu
     if (subCommand === "help") {
-      await message.sendReply(
-        `_1. Input images using .pdf_\n_2. Get output pdf using .pdf get_\n_3. Added images by mistake? then delete all inputted images using .pdf delete_\n_4. All files will be auto deleted after the output is produced_`
+      return await message.sendReply(
+        `*───「 PDF CONVERTER 」───*\n\n` +
+        `1. Reply to an image with \`.pdf\` to add it.\n` +
+        `2. Use \`.pdf get\` to generate the final PDF.\n` +
+        `3. Use \`.pdf delete\` to clear added images.\n\n` +
+        `_Files are auto-deleted after conversion._`
       );
-    } else if (subCommand === "delete") {
+    } 
+    
+    // 👑 Clear Cache
+    else if (subCommand === "delete") {
       const currentFiles = await fileSystem.readdir(imageInputDirectory);
-      const filesToDelete = currentFiles.map((fileName) =>
-        path.join(imageInputDirectory, fileName)
-      );
-
-      await Promise.all(
-        filesToDelete.map((filePath) => fileSystem.unlink(filePath))
-      );
-
-      try {
-        await fileSystem.unlink(finalPdfOutputPath);
-      } catch (error) {}
-      await message.sendReply(`_Successfully cleared all files!_`);
-    } else if (subCommand === "get") {
+      await Promise.all(currentFiles.map(file => fileSystem.unlink(path.join(imageInputDirectory, file))));
+      try { await fileSystem.unlink(finalPdfOutputPath); } catch (e) {}
+      return await message.sendReply(`_✅ All cached images cleared successfully!_`);
+    } 
+    
+    // 👑 Generate PDF
+    else if (subCommand === "get") {
       const allStoredFiles = await fileSystem.readdir(imageInputDirectory);
       const imageFilePaths = allStoredFiles
         .filter((fileName) => fileName.includes("topdf"))
         .map((fileName) => path.join(imageInputDirectory, fileName));
 
-      if (!imageFilePaths.length) {
-        return await message.sendReply("_No files inputted_");
-      }
+      if (!imageFilePaths.length) return await message.sendReply("_No images found in queue!_");
 
+      await message.send(`_Generating PDF from ${imageFilePaths.length} images..._`);
+      
       const pdfGenerationStream = imageToPdf(imageFilePaths, sizes.A4);
       const pdfWriteStream = fs.createWriteStream(finalPdfOutputPath);
-
       pdfGenerationStream.pipe(pdfWriteStream);
 
       pdfWriteStream.on("finish", async () => {
@@ -77,89 +73,56 @@ Module(
           {
             document: { url: finalPdfOutputPath },
             mimetype: "application/pdf",
-            fileName: "converted.pdf",
+            fileName: `${BOT_BRAND}_Converted.pdf`,
           },
           { quoted: message.data }
         );
 
+        // Cleanup
         const filesToCleanUp = await fileSystem.readdir(imageInputDirectory);
-        const tempFilesForDeletion = filesToCleanUp.map((fileName) =>
-          path.join(imageInputDirectory, fileName)
-        );
-        await Promise.all(
-          tempFilesForDeletion.map((filePath) => fileSystem.unlink(filePath))
-        );
+        await Promise.all(filesToCleanUp.map(file => fileSystem.unlink(path.join(imageInputDirectory, file))));
         await fileSystem.unlink(finalPdfOutputPath);
       });
 
       pdfWriteStream.on("error", async (error) => {
-        await message.sendReply(`_PDF conversion failed: ${error.message}_`);
+        await message.sendReply(`_Error: ${error.message}_`);
       });
-    } else if (message.reply_message && message.reply_message.album) {
-      // handle album
-      const albumData = await message.reply_message.download();
-      const allImages = albumData.images || [];
+    } 
+    
+    // 👑 Handle Single Image / Album
+    else if (message.reply_message) {
+      const reply = message.reply_message;
+      
+      // Handle Multi-Images (Albums)
+      if (reply.album) {
+        const albumData = await reply.download();
+        const allImages = albumData.images || [];
+        if (allImages.length === 0) return await message.sendReply("_No images found in album!_");
 
-      if (allImages.length === 0)
-        return await message.sendReply("_No images in album (videos can't be converted to PDF)_");
-
-      await message.send(
-        `_Adding ${allImages.length} album images to PDF..._`
-      );
-
-      for (let i = 0; i < allImages.length; i++) {
-        try {
+        for (let i = 0; i < allImages.length; i++) {
           const file = allImages[i];
-          const detectedFileType = await getFileType(
-            fs.readFileSync(file)
-          );
-
-          if (detectedFileType && detectedFileType.mime.startsWith("image")) {
-            const newImagePath = path.join(
-              imageInputDirectory,
-              `topdf_album_${i}.jpg`
-            );
-            fs.copyFileSync(file, newImagePath);
+          const type = await getFileType(fs.readFileSync(file));
+          if (type && type.mime.startsWith("image")) {
+            fs.copyFileSync(file, path.join(imageInputDirectory, `topdf_album_${Date.now()}_${i}.jpg`));
           }
-        } catch (err) {
-          console.error("Failed to add album image to PDF:", err);
         }
+        return await message.sendReply(`_✅ Added ${allImages.length} images. Total images ready. Use \`.pdf get\` to finish._`);
       }
 
-      await message.sendReply(
-        `_*Successfully saved ${allImages.length} album images*_\n_*Total images ready. Use '.pdf get' to generate PDF!*_`
-      );
-    } else if (message.reply_message) {
-      const repliedMessageBuffer = await message.reply_message.download(
-        "buffer"
-      );
-      const detectedFileType = await getFileType(repliedMessageBuffer);
+      // Handle Single Image
+      const buffer = await reply.download("buffer");
+      const type = await getFileType(buffer);
 
-      if (detectedFileType && detectedFileType.mime.startsWith("image")) {
-        const existingImageFiles = (
-          await fileSystem.readdir(imageInputDirectory)
-        ).filter((fileName) => fileName.includes("topdf"));
-        const nextImageIndex = existingImageFiles.length;
-        const newImagePath = path.join(
-          imageInputDirectory,
-          `topdf_${nextImageIndex}.jpg`
-        );
-
-        await fileSystem.writeFile(newImagePath, repliedMessageBuffer);
-        return await message.sendReply(
-          `*_Successfully saved image_*\n_*Total saved images: ${
-            nextImageIndex + 1
-          }*_\n*_After saving all images, use '.pdf get' to get the result. Images will be deleted after conversion!_*`
-        );
+      if (type && type.mime.startsWith("image")) {
+        const existingCount = (await fileSystem.readdir(imageInputDirectory)).filter(f => f.includes("topdf")).length;
+        const newPath = path.join(imageInputDirectory, `topdf_${existingCount}.jpg`);
+        await fileSystem.writeFile(newPath, buffer);
+        return await message.sendReply(`_✅ Image added! (Total: ${existingCount + 1})_\n_Use \`.pdf get\` when done._`);
       } else {
-        return await message.sendReply(
-          "_Reply to an image to add it for PDF conversion!_"
-        );
+        return await message.sendReply("_Please reply to an image!_");
       }
     } else {
-      return await message.sendReply(
-        '_Reply to an image, or use ".pdf help" for more information._'
-      );
+      return await message.sendReply(`_Reply to an image or use \`.pdf help\`_`);
     }
   }
 );

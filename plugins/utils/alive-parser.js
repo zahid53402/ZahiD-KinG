@@ -4,48 +4,50 @@ const config = require("../../config");
 const os = require("os");
 
 /**
- * Parse alive message with bot stats placeholders
- * @param {string} template - Message template with placeholders
- * @param {Object} messageObject - WhatsApp message object
- * @returns {Object} - Parsed message with text and media
+ * ZAHID-KING-MD Alive Message Parser
+ * Optimized for high performance and clean formatting
  */
+
 async function parseAliveMessage(template, messageObject) {
   if (!template || !messageObject) return null;
 
   try {
-    const used = bytesToSize(os.freemem());
-    const total = bytesToSize(os.totalmem());
+    // System Stats
+    const usedRam = bytesToSize(os.totalmem() - os.freemem());
+    const totalRam = bytesToSize(os.totalmem());
     const totalUsers = await getTotalUserCount();
+    
+    // Bot Info from Config
     const infoParts = config.BOT_INFO.split(";");
-    const botName = infoParts[0] || "My Bot";
-    const botOwner = infoParts[1] || "N/A";
+    const botName = infoParts[0] || "ZAHID-KING-MD";
+    const botOwner = infoParts[1] || "Zahid Khan";
     const botVersion = config.VERSION || "1.0.0";
-    const mode = config.MODE || "private";
-    const serverOS = os.platform() === "linux" ? "Linux" : "Unknown OS";
+    const mode = config.MODE || "Public";
+    const serverOS = os.platform() === "linux" ? "Linux (Cloud)" : os.platform();
     const uptime = formatUptime(process.uptime());
 
+    // User Info
     let senderName = "";
     let senderNumber = "";
     if (messageObject.sender) {
       senderNumber = messageObject.sender.split("@")[0];
       try {
-        const contact = await messageObject.client.getContact(
-          messageObject.sender
-        );
+        const contact = await messageObject.client.getContact(messageObject.sender);
         senderName = contact.name || contact.notify || senderNumber;
       } catch {
         senderName = messageObject.senderName || senderNumber;
       }
     }
 
+    // Replace Placeholders in template
     let parsedMessage = template
       .replace(/\$botname/g, botName)
       .replace(/\$owner/g, botOwner)
       .replace(/\$version/g, botVersion)
       .replace(/\$mode/g, mode)
       .replace(/\$server/g, serverOS)
-      .replace(/\$ram/g, used)
-      .replace(/\$totalram/g, total)
+      .replace(/\$ram/g, usedRam)
+      .replace(/\$totalram/g, totalRam)
       .replace(/\$users/g, totalUsers.toString())
       .replace(/\$uptime/g, uptime)
       .replace(/\$user/g, senderName)
@@ -53,127 +55,96 @@ async function parseAliveMessage(template, messageObject) {
       .replace(/\$date/g, new Date().toLocaleDateString())
       .replace(/\$time/g, new Date().toLocaleTimeString());
 
-    let profilePicBuffer = null;
-    let customMediaBuffer = null;
+    let mediaBuffer = null;
     let isVideo = false;
 
+    // Handle $pp placeholder (Sender Profile Picture)
     if (template.includes("$pp") && messageObject.sender) {
       try {
-        const ppUrl = await messageObject.client.profilePictureUrl(
-          messageObject.sender,
-          "image"
-        );
-        if (ppUrl) {
-          profilePicBuffer = await getBuffer(ppUrl);
-        }
-      } catch (error) {
-        console.log("Error fetching profile picture:", error);
+        const ppUrl = await messageObject.client.profilePictureUrl(messageObject.sender, "image");
+        if (ppUrl) mediaBuffer = await getBuffer(ppUrl);
+      } catch (e) {
+        console.log("PP Fetch Error:", e.message);
       }
       parsedMessage = parsedMessage.replace(/\$pp/g, "").trim();
     }
 
+    // Handle $media:URL placeholder (Custom Image/Video)
     const mediaRegex = /\$media:(https?:\/\/[^\s]+)/g;
     const mediaMatch = mediaRegex.exec(template);
     if (mediaMatch) {
       const mediaUrl = mediaMatch[1];
       try {
-        customMediaBuffer = await getBuffer(mediaUrl);
-
+        mediaBuffer = await getBuffer(mediaUrl);
         isVideo = /\.(mp4|mov|avi|mkv|webm|gif)$/i.test(mediaUrl);
-      } catch (error) {
-        console.log("Error fetching custom media:", error);
+      } catch (e) {
+        console.log("Media Fetch Error:", e.message);
       }
       parsedMessage = parsedMessage.replace(mediaRegex, "").trim();
     }
 
     return {
       text: parsedMessage,
-      profilePic: profilePicBuffer,
-      customMedia: customMediaBuffer,
+      media: mediaBuffer,
       isVideo: isVideo,
       mentions: messageObject.sender ? [messageObject.sender] : [],
     };
   } catch (error) {
-    console.error("Error parsing alive message:", error);
+    console.error("Alive Parsing Error:", error);
     return null;
   }
 }
 
-/**
- * Send parsed alive message
- * @param {Object} messageObject - WhatsApp message object
- * @param {Object} parsedMessage - Parsed message object
- */
 async function sendAliveMessage(messageObject, parsedMessage) {
   if (!parsedMessage) return;
 
   try {
-    if (parsedMessage.customMedia) {
+    const commonOptions = {
+      caption: parsedMessage.text || "",
+      mentions: parsedMessage.mentions
+    };
+
+    if (parsedMessage.media) {
       if (parsedMessage.isVideo) {
-        await messageObject.client.sendMessage(messageObject.jid, {
-          video: parsedMessage.customMedia,
-          caption: parsedMessage.text || "",
+        return await messageObject.client.sendMessage(messageObject.jid, {
+          video: parsedMessage.media,
           gifPlayback: true,
-          mentions: parsedMessage.mentions,
+          ...commonOptions
         });
       } else {
-        await messageObject.client.sendMessage(messageObject.jid, {
-          image: parsedMessage.customMedia,
-          caption: parsedMessage.text || "",
-          mentions: parsedMessage.mentions,
+        return await messageObject.client.sendMessage(messageObject.jid, {
+          image: parsedMessage.media,
+          ...commonOptions
         });
       }
-      return;
     }
 
-    if (parsedMessage.profilePic) {
-      await messageObject.client.sendMessage(messageObject.jid, {
-        image: parsedMessage.profilePic,
-        caption: parsedMessage.text || "",
-        mentions: parsedMessage.mentions,
-      });
-      return;
-    }
+    // Text-only fallback
+    await messageObject.client.sendMessage(messageObject.jid, {
+      text: parsedMessage.text,
+      mentions: parsedMessage.mentions
+    });
 
-    if (parsedMessage.text) {
-      await messageObject.client.sendMessage(messageObject.jid, {
-        text: parsedMessage.text,
-        mentions: parsedMessage.mentions,
-      });
-    }
   } catch (error) {
-    console.error("Error sending alive message:", error);
-
-    if (parsedMessage.text) {
-      try {
-        await messageObject.sendReply(parsedMessage.text);
-      } catch (fallbackError) {
-        console.error("Fallback send also failed:", fallbackError);
-      }
-    }
+    console.error("Alive Sending Error:", error);
+    await messageObject.sendReply(parsedMessage.text);
   }
 }
 
+// Utility: Format RAM size
 function bytesToSize(bytes) {
-  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  const sizes = ["Bytes", "KB", "MB", "GB"];
   if (bytes === 0) return "0 Byte";
   const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
   return Math.round(bytes / Math.pow(1024, i), 2) + " " + sizes[i];
 }
 
+// Utility: Format Uptime
 function formatUptime(seconds) {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return `${h}h ${m}m ${s}s`;
 }
 
-module.exports = {
-  parseAliveMessage,
-  sendAliveMessage,
-};
+module.exports = { parseAliveMessage, sendAliveMessage };

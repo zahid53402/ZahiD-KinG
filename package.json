@@ -1,19 +1,19 @@
 {
-  "name": "Zᴀʜɪᴅ Kɪɴɢ",
+  "name": "zahid-king-md",
   "version": "6.2.26",
-  "description": "A multi functional wa bot.",
+  "description": "Multi-functional WhatsApp bot developed by Zahid King.",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "pm2 start index.js --name Zᴀʜɪᴅ Kɪɴɢ --attach"
+    "start": "pm2 start index.js --name zahid-king-md --attach"
   },
   "keywords": [
     "whatsapp",
     "bot",
-    "baileys",
-    "Zᴀʜɪᴅ Kɪɴɢ"
+    "zahid-king",
+    "baileys"
   ],
-  "author": "Sourav K",
+  "author": "Zᴀʜɪᴅ Kɪɴɢ",
   "license": "GPL-3.0-or-later",
   "dependencies": {
     "@vitalets/google-translate-api": "^9.2.1",
@@ -42,5 +42,3 @@
     "youtube-sr": "^4.3.11"
   }
 }
-
-

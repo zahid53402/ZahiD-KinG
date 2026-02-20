@@ -1,152 +1,60 @@
-// Import all modules
-const dbOperations = require("./db/functions");
-const mediaProcessing = require("./mediaProcessors");
-const utils = require("./misc");
-const language = require("./manglish");
+/**
+ * ZAHID-KING-MD - Main Export Index
+ * This file connects all utility functions and modules.
+ */
 
-// Grouped database operations
+// 1. Database Operations (Safety & Group Management)
+const dbOperations = require("./db/functions");
 const {
-  getWarn,
-  setWarn,
-  resetWarn,
-  decrementWarn,
-  getWarnCount,
-  getAllWarns,
-  antilinkConfig,
-  antiword,
-  antifake,
-  antipromote,
-  antidemote,
-  antispam,
-  antibot,
-  pdm,
-  welcome,
-  goodbye,
-  filter,
+  getWarn, setWarn, resetWarn, decrementWarn, getWarnCount, getAllWarns,
+  antilinkConfig, antiword, antifake, antipromote, antidemote,
+  antispam, antibot, pdm, welcome, goodbye, filter,
 } = dbOperations;
 
-// Media processing functions
+// 2. Media Processing (Image & Video Tools)
+const mediaProcessing = require("./mediaProcessors");
 const {
-  addExif,
-  bass,
-  circle,
-  blur,
-  attp,
-  sticker,
-  rotate,
-  avMix,
-  webp2mp4,
-  addID3,
-  trim,
+  addExif, bass, circle, blur, attp, sticker, rotate, avMix, webp2mp4, addID3, trim,
 } = mediaProcessing;
 
-// Utility functions
+// 3. General Utilities (Social Media & Tools)
+const utils = require("./misc");
 const {
-  parseUptime,
-  isNumeric,
-  isAdmin,
-  mentionjid,
-  getJson,
-  bytesToSize,
-  isFake,
-  processOnwa,
-  findMusic,
-  searchYT,
-  downloadGram,
-  pinterestDl,
-  fb,
-  igStalk,
-  tiktok,
-  story,
-  getThumb,
-  gtts,
-  getBuffer,
-  lyrics,
-  pinterestSearch,
+  parseUptime, isNumeric, isAdmin, mentionjid, getJson, bytesToSize,
+  isFake, processOnwa, findMusic, searchYT, downloadGram, pinterestDl,
+  fb, igStalk, tiktok, story, getThumb, gtts, getBuffer, lyrics, pinterestSearch,
 } = utils;
 
-// Language functions
-const { malayalamToManglish, manglishToMalayalam } = language;
-
+// 4. External Plugins & AI Modules
+const language = require("./manglish");
 const aiTTS = require("./ai-tts");
-
 const { gis } = require("./gis");
-
 const { uploadToImgbb, uploadToCatbox } = require("./upload");
-
 const linkDetector = require("./link-detector");
-
 const fancy = require("./fancy");
 
+// 5. Export Everything for the Bot Engine
 module.exports = {
-  // Database Operations
-  getWarn,
-  setWarn,
-  fancy,
-  resetWarn,
-  decrementWarn,
-  getWarnCount,
-  getAllWarns,
-  antilinkConfig,
-  antiword,
-  antifake,
-  antipromote,
-  antidemote,
-  antispam,
-  antibot,
-  pdm,
-  welcome,
-  goodbye,
-  filter,
+  // Group & Warning System
+  getWarn, setWarn, resetWarn, decrementWarn, getWarnCount, getAllWarns,
+  antilinkConfig, antiword, antifake, antipromote, antidemote,
+  antispam, antibot, pdm, welcome, goodbye, filter,
 
-  // Media Processing
-  addExif,
-  bass,
-  circle,
-  blur,
-  attp,
-  sticker,
-  rotate,
-  avMix,
-  webp2mp4,
-  addID3,
-  trim,
+  // Media & Sticker Tools
+  addExif, bass, circle, blur, attp, sticker, rotate, avMix, webp2mp4, addID3, trim,
 
-  // Utilities
-  parseUptime,
-  isNumeric,
-  isAdmin,
-  mentionjid,
-  getJson,
-  bytesToSize,
-  isFake,
-  aiTTS,
-  processOnwa,
-  findMusic,
-  searchYT,
-  downloadGram,
-  pinterestDl,
-  fb,
-  igStalk,
-  tiktok,
-  story,
-  getThumb,
-  gtts,
-  getBuffer,
-  pinterestSearch,
+  // Social & Search Utilities
+  parseUptime, isNumeric, isAdmin, mentionjid, getJson, bytesToSize,
+  isFake, aiTTS, processOnwa, findMusic, searchYT, downloadGram, 
+  pinterestDl, fb, igStalk, tiktok, story, getThumb, gtts, getBuffer, 
+  pinterestSearch, lyrics,
 
-  // Language
-  malayalamToManglish,
-  manglishToMalayalam,
-
-  // GIS
+  // Specialized Modules
+  malayalamToManglish: language.malayalamToManglish,
+  manglishToMalayalam: language.manglishToMalayalam,
   gis,
-
-  // File Upload
+  fancy,
   uploadToImgbb,
   uploadToCatbox,
-
-  // Link Detection
   linkDetector,
-  lyrics,
 };
